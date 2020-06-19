@@ -1,4 +1,4 @@
-package csidrivercontroller
+package controller
 
 import (
 	"fmt"

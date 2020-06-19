@@ -1,4 +1,4 @@
-package csicontrollerset
+package controllerset
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-type CSIControllerSet struct {
+type ControllerSet struct {
 	logLevelController        factory.Controller
 	managementStateController factory.Controller
 	staticResourcesController factory.Controller
@@ -23,7 +23,7 @@ type CSIControllerSet struct {
 	eventRecorder  events.Recorder
 }
 
-func (c *CSIControllerSet) Run(ctx context.Context, workers int) {
+func (c *ControllerSet) Run(ctx context.Context, workers int) {
 	controllers := []factory.Controller{
 		c.logLevelController,
 		c.managementStateController,
@@ -37,12 +37,12 @@ func (c *CSIControllerSet) Run(ctx context.Context, workers int) {
 	}
 }
 
-func (c *CSIControllerSet) WithLogLevelController() *CSIControllerSet {
+func (c *ControllerSet) WithLogLevelController() *ControllerSet {
 	c.logLevelController = loglevel.NewClusterOperatorLoggingController(c.operatorClient, c.eventRecorder)
 	return c
 }
 
-func (c *CSIControllerSet) WithManagementStateController(operandName string, supportsOperandRemoval bool) *CSIControllerSet {
+func (c *ControllerSet) WithManagementStateController(operandName string, supportsOperandRemoval bool) *ControllerSet {
 	c.managementStateController = management.NewOperatorManagementStateController(operandName, c.operatorClient, c.eventRecorder)
 
 	if supportsOperandRemoval {
@@ -52,13 +52,13 @@ func (c *CSIControllerSet) WithManagementStateController(operandName string, sup
 	return c
 }
 
-func (c *CSIControllerSet) WithStaticResourcesController(
+func (c *ControllerSet) WithStaticResourcesController(
 	name string,
 	kubeClient kubernetes.Interface,
 	kubeInformersForNamespace v1helpers.KubeInformersForNamespaces,
 	manifests resourceapply.AssetFunc,
 	files []string,
-) *CSIControllerSet {
+) *ControllerSet {
 	c.staticResourcesController = staticresourcecontroller.NewStaticResourceController(
 		name,
 		manifests,
@@ -71,12 +71,12 @@ func (c *CSIControllerSet) WithStaticResourcesController(
 	return c
 }
 
-func (c *CSIControllerSet) WithCSIDriverController() *CSIControllerSet {
+func (c *ControllerSet) WithCSIDriverController() *ControllerSet {
 	return c
 }
 
-func NewCSIControllerSet(operatorClient v1helpers.OperatorClient, eventRecorder events.Recorder) *CSIControllerSet {
-	return &CSIControllerSet{
+func New(operatorClient v1helpers.OperatorClient, eventRecorder events.Recorder) *ControllerSet {
+	return &ControllerSet{
 		operatorClient: operatorClient,
 		eventRecorder:  eventRecorder,
 	}
