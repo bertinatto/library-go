@@ -16,18 +16,11 @@ import (
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 )
 
-const (
-	daemonSet          = "node.yaml"
-	deployment         = "controller.yaml"
-	credentialsRequest = "credentials.yaml"
-	specHashAnnotation = "operator.openshift.io/spec-hash"
-)
-
 func (c *Controller) syncCredentialsRequest(status *operatorv1.OperatorStatus) (*unstructured.Unstructured, error) {
-	cr := readCredentialRequestsOrDie(c.config.CredentialsManifest)
+	cr := readCredentialRequestsOrDie(c.credentialsManifest)
 
 	// Set spec.secretRef.namespace
-	err := unstructured.SetNestedField(cr.Object, c.config.OperandNamespace, "spec", "secretRef", "namespace")
+	err := unstructured.SetNestedField(cr.Object, c.csiDriverNamespace, "spec", "secretRef", "namespace")
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +76,7 @@ func (c *Controller) syncDaemonSet(spec *operatorv1.OperatorSpec, status *operat
 }
 
 func (c *Controller) getExpectedDeployment(spec *operatorv1.OperatorSpec) *appsv1.Deployment {
-	deployment := resourceread.ReadDeploymentV1OrDie(c.config.ControllerManifest)
+	deployment := resourceread.ReadDeploymentV1OrDie(c.controllerManifest)
 
 	if c.images.csiDriver != "" {
 		deployment.Spec.Template.Spec.Containers[0].Image = c.images.csiDriver
@@ -116,7 +109,7 @@ func (c *Controller) getExpectedDeployment(spec *operatorv1.OperatorSpec) *appsv
 }
 
 func (c *Controller) getExpectedDaemonSet(spec *operatorv1.OperatorSpec) *appsv1.DaemonSet {
-	daemonSet := resourceread.ReadDaemonSetV1OrDie(c.config.NodeManifest)
+	daemonSet := resourceread.ReadDaemonSetV1OrDie(c.nodeManifest)
 
 	if c.images.csiDriver != "" {
 		daemonSet.Spec.Template.Spec.Containers[csiDriverContainerIndex].Image = c.images.csiDriver
@@ -166,7 +159,7 @@ func (c *Controller) syncStatus(meta *metav1.ObjectMeta, status *operatorv1.Oper
 	}
 
 	c.setVersion("operator", c.operatorVersion)
-	c.setVersion(c.config.OperandName, c.operandVersion)
+	c.setVersion(c.csiDriverName, c.operandVersion)
 
 	return nil
 }

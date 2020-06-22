@@ -6,10 +6,12 @@ import (
 	"os"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
@@ -55,18 +57,30 @@ const (
 )
 
 type Controller struct {
-	config *Config
+	name string
 
-	client             v1helpers.OperatorClient
-	kubeClient         kubernetes.Interface
-	dynamicClient      dynamic.Interface
-	deploymentInformer appsinformersv1.DeploymentInformer
-	dsSetInformer      appsinformersv1.DaemonSetInformer
-	versionGetter      status.VersionGetter
-	eventRecorder      events.Recorder
-	informersSynced    []cache.InformerSynced
+	// CSI Driver information
+	csiDriverName      string
+	csiDriverNamespace string
+
+	operatorClient  v1helpers.OperatorClient
+	kubeClient      kubernetes.Interface
+	dynamicClient   dynamic.Interface
+	versionGetter   status.VersionGetter
+	eventRecorder   events.Recorder
+	informersSynced []cache.InformerSynced
+
+	// Asset files
+	assetFunc           func(string) []byte
+	controllerManifest  []byte
+	nodeManifest        []byte
+	credentialsManifest []byte
 
 	syncHandler func() error
+
+	syncControllerService       func(*operatorv1.OperatorSpec, *operatorv1.OperatorStatus) (*appsv1.Deployment, error)
+	syncNodeService             func(*operatorv1.OperatorSpec, *operatorv1.OperatorStatus) (*appsv1.DaemonSet, error)
+	syncCloudCredentialsRequest func(*operatorv1.OperatorStatus) (*unstructured.Unstructured, error)
 
 	queue workqueue.RateLimitingInterface
 
@@ -85,58 +99,66 @@ type images struct {
 	livenessProbe       string
 }
 
-type Config struct {
-	OperandName      string
-	OperandNamespace string
-
-	ControllerManifest  []byte
-	NodeManifest        []byte
-	CredentialsManifest []byte
-}
-
 func New(
-	config *Config,
-	client v1helpers.OperatorClient,
-	dynamicClient dynamic.Interface,
+	name string,
+	csiDriverName string,
+	csiDriverNamespace string,
+	operatorClient v1helpers.OperatorClient,
+	assetFunc func(string) []byte,
 	kubeClient kubernetes.Interface,
-	deployInformer appsinformersv1.DeploymentInformer,
-	dsInformer appsinformersv1.DaemonSetInformer,
 	eventRecorder events.Recorder,
-) (*Controller, error) {
-
-	if config == nil {
-		return nil, fmt.Errorf("controller config can't be nil")
-	}
-
+) *Controller {
 	controller := &Controller{
-		config:             config,
-		client:             client,
+		name:               name,
+		csiDriverName:      csiDriverName,
+		csiDriverNamespace: csiDriverNamespace,
+		operatorClient:     operatorClient,
+		assetFunc:          assetFunc,
 		kubeClient:         kubeClient,
-		dynamicClient:      dynamicClient,
-		deploymentInformer: deployInformer,
-		dsSetInformer:      dsInformer,
 		versionGetter:      status.NewVersionGetter(),
 		eventRecorder:      eventRecorder,
-		queue:              workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), config.OperandName),
+		queue:              workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), csiDriverName),
 		operatorVersion:    os.Getenv(operatorVersionEnvName),
 		operandVersion:     os.Getenv(operandVersionEnvName),
 		images:             imagesFromEnv(),
 	}
 
-	deployInformer.Informer().AddEventHandler(controller.eventHandler("deployment"))
-	dsInformer.Informer().AddEventHandler(controller.eventHandler("daemonset"))
-	client.Informer().AddEventHandler(controller.eventHandler(config.OperandName))
+	operatorClient.Informer().AddEventHandler(controller.eventHandler(csiDriverName))
 
-	controller.informersSynced = append(
-		controller.informersSynced,
-		deployInformer.Informer().HasSynced,
-		dsInformer.Informer().HasSynced,
-		client.Informer().HasSynced,
-	)
+	controller.informersSynced = append(controller.informersSynced, operatorClient.Informer().HasSynced)
 
+	// TODO: remove
 	controller.syncHandler = controller.sync
 
-	return controller, nil
+	return controller
+}
+
+func (c *Controller) Name() string {
+	return c.name
+}
+
+func (c *Controller) WithControllerService(informer appsinformersv1.DeploymentInformer, file string) *Controller {
+	informer.Informer().AddEventHandler(c.eventHandler("deployment"))
+	c.informersSynced = append(c.informersSynced, informer.Informer().HasSynced)
+	// TODO: do I need to set both?
+	c.controllerManifest = c.assetFunc(file)
+	c.syncControllerService = c.syncDeployment
+	return c
+}
+
+func (c *Controller) WithNodeService(dsInformer appsinformersv1.DaemonSetInformer, file string) *Controller {
+	dsInformer.Informer().AddEventHandler(c.eventHandler("daemonSet"))
+	c.informersSynced = append(c.informersSynced, dsInformer.Informer().HasSynced)
+	c.nodeManifest = c.assetFunc(file)
+	c.syncNodeService = c.syncDaemonSet
+	return c
+}
+
+func (c *Controller) WithCloudCredentials(dynamicClient dynamic.Interface, file string) *Controller {
+	c.dynamicClient = dynamicClient
+	c.credentialsManifest = c.assetFunc(file)
+	c.syncCloudCredentialsRequest = c.syncCredentialsRequest
+	return c
 }
 
 func (c *Controller) Run(ctx context.Context, workers int) {
@@ -157,7 +179,7 @@ func (c *Controller) Run(ctx context.Context, workers int) {
 }
 
 func (c *Controller) sync() error {
-	meta, err := c.client.GetObjectMeta()
+	meta, err := c.operatorClient.GetObjectMeta()
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.Warningf("Object metadata not found: %v", err)
@@ -166,7 +188,7 @@ func (c *Controller) sync() error {
 		return err
 	}
 
-	opSpec, opStatus, opResourceVersion, err := c.client.GetOperatorState()
+	opSpec, opStatus, opResourceVersion, err := c.operatorClient.GetOperatorState()
 	if err != nil {
 		return err
 	}
@@ -189,8 +211,10 @@ func (c *Controller) sync() error {
 
 	c.updateSyncError(opStatus, syncErr)
 
+	// v1helpers.UpdateStatus(c.client, v1helpers.UpdateConditionFn(cond)); updateError != nil {
+
 	// Update the status using our copy
-	_, _, err = v1helpers.UpdateStatus(c.client, func(status *operatorv1.OperatorStatus) error {
+	_, _, err = v1helpers.UpdateStatus(c.operatorClient, func(status *operatorv1.OperatorStatus) error {
 		// Store a copy of our starting conditions, we need to preserve last transition time
 		originalConditions := status.DeepCopy().Conditions
 
@@ -251,24 +275,30 @@ func (c *Controller) updateSyncError(status *operatorv1.OperatorStatus, err erro
 }
 
 func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta, spec *operatorv1.OperatorSpec, status *operatorv1.OperatorStatus) error {
-	credentialsRequest, err := c.syncCredentialsRequest(status)
+	credentialsRequest, err := c.syncCloudCredentialsRequest(status)
 	if err != nil {
 		return fmt.Errorf("failed to sync CredentialsRequest: %v", err)
 	}
 
 	// TODO: wait for secret
 
-	deployment, err := c.syncDeployment(spec, status)
-	if err != nil {
-		return fmt.Errorf("failed to sync Deployment: %v", err)
+	var controllerService *appsv1.Deployment
+	if c.syncControllerService != nil {
+		controllerService, err = c.syncControllerService(spec, status)
+		if err != nil {
+			return fmt.Errorf("failed to sync CSI Controller Service: %v", err)
+		}
 	}
 
-	daemonSet, err := c.syncDaemonSet(spec, status)
-	if err != nil {
-		return fmt.Errorf("failed to sync DaemonSet: %v", err)
+	var nodeService *appsv1.DaemonSet
+	if c.syncNodeService != nil {
+		nodeService, err = c.syncNodeService(spec, status)
+		if err != nil {
+			return fmt.Errorf("failed to sync DaemonSet: %v", err)
+		}
 	}
 
-	if err := c.syncStatus(meta, status, deployment, daemonSet, credentialsRequest); err != nil {
+	if err := c.syncStatus(meta, status, controllerService, nodeService, credentialsRequest); err != nil {
 		return fmt.Errorf("failed to sync status: %v", err)
 	}
 

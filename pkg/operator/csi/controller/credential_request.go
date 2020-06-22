@@ -22,6 +22,8 @@ const (
 	credentialsRequestResource = "credentialsrequests"
 	credentialsRequestKind     = "CredentialsRequest"
 	credentialRequestNamespace = "openshift-cloud-credential-operator"
+
+	specHashAnnotation = "operator.openshift.io/spec-hash"
 )
 
 var (
