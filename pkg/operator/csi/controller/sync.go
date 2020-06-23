@@ -25,12 +25,6 @@ func (c *Controller) syncCredentialsRequest(status *operatorv1.OperatorStatus) (
 		return nil, err
 	}
 
-	forceRollout := false
-	if c.versionChanged("operator", c.operatorVersion) {
-		// Operator version changed. The new one _may_ have updated Deployment -> we should deploy it.
-		forceRollout = true
-	}
-
 	var expectedGeneration int64 = -1
 	generation := resourcemerge.GenerationFor(
 		status.Generations,
@@ -41,7 +35,7 @@ func (c *Controller) syncCredentialsRequest(status *operatorv1.OperatorStatus) (
 		expectedGeneration = generation.LastGeneration
 	}
 
-	cr, _, err = applyCredentialsRequest(c.dynamicClient, c.eventRecorder, cr, expectedGeneration, forceRollout)
+	cr, _, err = applyCredentialsRequest(c.dynamicClient, c.eventRecorder, cr, expectedGeneration)
 	return cr, err
 }
 
@@ -133,12 +127,25 @@ func (c *Controller) getExpectedDaemonSet(spec *operatorv1.OperatorSpec) *appsv1
 	return daemonSet
 }
 
-func (c *Controller) syncStatus(meta *metav1.ObjectMeta, status *operatorv1.OperatorStatus, deployment *appsv1.Deployment,
-	daemonSet *appsv1.DaemonSet, credentialsRequest *unstructured.Unstructured) error {
-	c.syncConditions(status, deployment, daemonSet)
+func (c *Controller) syncStatus(
+	meta *metav1.ObjectMeta,
+	status *operatorv1.OperatorStatus,
+	deployment *appsv1.Deployment,
+	daemonSet *appsv1.DaemonSet,
+	credentialsRequest *unstructured.Unstructured) error {
 
-	resourcemerge.SetDeploymentGeneration(&status.Generations, deployment)
+	// Set the last generation change we dealt with
+	status.ObservedGeneration = meta.Generation
+
+	// Node Service is mandatory, so always set set  generation
 	resourcemerge.SetDaemonSetGeneration(&status.Generations, daemonSet)
+
+	// Set number of replicas
+	if daemonSet.Status.NumberUnavailable == 0 {
+		status.ReadyReplicas = daemonSet.Status.UpdatedNumberScheduled
+	}
+
+	// Credentials are optional, so maybe set generation
 	if credentialsRequest != nil {
 		resourcemerge.SetGeneration(&status.Generations, operatorv1.GenerationStatus{
 			Group:          credentialsRequestGroup,
@@ -149,123 +156,146 @@ func (c *Controller) syncStatus(meta *metav1.ObjectMeta, status *operatorv1.Oper
 		})
 	}
 
-	status.ObservedGeneration = meta.Generation
+	// Controller Service is not mandatory as well
+	if c.controllerManifest != nil {
+		// CSI Controller Service was deployed, set deployment generation
+		resourcemerge.SetDeploymentGeneration(&status.Generations, deployment)
 
-	// TODO: what should be the number of replicas? Right now the formula is:
-	if deployment != nil && daemonSet != nil {
-		if deployment.Status.UnavailableReplicas == 0 && daemonSet.Status.NumberUnavailable == 0 {
-			status.ReadyReplicas = deployment.Status.UpdatedReplicas + daemonSet.Status.UpdatedNumberScheduled
+		// Add number of CSI controllers to the number of replicas ready
+		if deployment != nil {
+			if deployment.Status.UnavailableReplicas == 0 && daemonSet.Status.NumberUnavailable == 0 {
+				status.ReadyReplicas += deployment.Status.UpdatedReplicas
+			}
 		}
 	}
 
-	c.setVersion("operator", c.operatorVersion)
-	c.setVersion(c.csiDriverName, c.operandVersion)
+	// Finally, set the conditions
 
-	return nil
-}
-
-func (c *Controller) syncConditions(status *operatorv1.OperatorStatus, deployment *appsv1.Deployment, daemonSet *appsv1.DaemonSet) {
 	// The operator does not have any prerequisites (at least now)
 	v1helpers.SetOperatorCondition(&status.Conditions,
 		operatorv1.OperatorCondition{
 			Type:   operatorv1.OperatorStatusTypePrereqsSatisfied,
 			Status: operatorv1.ConditionTrue,
 		})
+
 	// The operator is always upgradeable (at least now)
 	v1helpers.SetOperatorCondition(&status.Conditions,
 		operatorv1.OperatorCondition{
 			Type:   operatorv1.OperatorStatusTypeUpgradeable,
 			Status: operatorv1.ConditionTrue,
 		})
-	c.syncProgressingCondition(status, deployment, daemonSet)
-	c.syncAvailableCondition(status, deployment, daemonSet)
-}
 
-func (c *Controller) syncAvailableCondition(status *operatorv1.OperatorStatus, deployment *appsv1.Deployment, daemonSet *appsv1.DaemonSet) {
-	// TODO: is it enough to check if these values are >0? Or should be more strict and check against the exact desired value?
-	isDeploymentAvailable := deployment != nil && deployment.Status.AvailableReplicas > 0
-	isDaemonSetAvailable := daemonSet != nil && daemonSet.Status.NumberAvailable > 0
-	if isDeploymentAvailable && isDaemonSetAvailable {
-		v1helpers.SetOperatorCondition(&status.Conditions,
-			operatorv1.OperatorCondition{
-				Type:   operatorv1.OperatorStatusTypeAvailable,
-				Status: operatorv1.ConditionTrue,
-			})
-	} else {
+	// The operator is avaiable for now
+	v1helpers.SetOperatorCondition(&status.Conditions,
+		operatorv1.OperatorCondition{
+			Type:   operatorv1.OperatorStatusTypeAvailable,
+			Status: operatorv1.ConditionTrue,
+		})
+
+	// Make it not available if daemonSet hasn't deployed the pods
+	if !isDaemonSetAvailable(daemonSet) {
 		v1helpers.SetOperatorCondition(&status.Conditions,
 			operatorv1.OperatorCondition{
 				Type:    operatorv1.OperatorStatusTypeAvailable,
 				Status:  operatorv1.ConditionFalse,
-				Message: "Waiting for Deployment and DaemonSet to deploy aws-ebs-csi-driver pods",
+				Message: "Waiting for the DaemonSet to deploy the CSI Node Service",
 				Reason:  "AsExpected",
 			})
 	}
+
+	// Make it not available if deployment hasn't deployed the pods
+	if c.controllerManifest != nil {
+		if !isDeploymentAvailable(deployment) {
+			v1helpers.SetOperatorCondition(&status.Conditions,
+				operatorv1.OperatorCondition{
+					Type:    operatorv1.OperatorStatusTypeAvailable,
+					Status:  operatorv1.ConditionFalse,
+					Message: "Waiting for Deployment to deploy the CSI Controller Service",
+					Reason:  "AsExpected",
+				})
+		}
+	}
+
+	// The operator is not progressing for now
+	v1helpers.SetOperatorCondition(&status.Conditions,
+		operatorv1.OperatorCondition{
+			Type:   operatorv1.OperatorStatusTypeProgressing,
+			Status: operatorv1.ConditionFalse,
+			Reason: "AsExpected",
+		})
+
+	isProgressing, msg := c.getDaemonSetProgress(status, daemonSet)
+	if isProgressing {
+		v1helpers.SetOperatorCondition(&status.Conditions,
+			operatorv1.OperatorCondition{
+				Type:    operatorv1.OperatorStatusTypeProgressing,
+				Status:  operatorv1.ConditionTrue,
+				Message: msg,
+				Reason:  "AsExpected",
+			})
+	}
+
+	if c.controllerManifest != nil {
+		// CSI Controller deployed, let's check its progressing state
+		isProgressing, msg := c.getDeploymentProgress(status, deployment)
+		if isProgressing {
+			v1helpers.SetOperatorCondition(&status.Conditions,
+				operatorv1.OperatorCondition{
+					Type:    operatorv1.OperatorStatusTypeProgressing,
+					Status:  operatorv1.ConditionTrue,
+					Message: msg,
+					Reason:  "AsExpected",
+				})
+		}
+	}
+
+	return nil
 }
 
-func (c *Controller) syncProgressingCondition(status *operatorv1.OperatorStatus, deployment *appsv1.Deployment, daemonSet *appsv1.DaemonSet) {
-	// Progressing: true when Deployment or DaemonSet have some work to do
-	// (false: when all replicas are updated to the latest release and available)/
-	var progressing operatorv1.ConditionStatus
-	var progressingMessage string
+func isDaemonSetAvailable(d *appsv1.DaemonSet) bool {
+	return d != nil && d.Status.NumberAvailable > 0
+}
+
+func isDeploymentAvailable(d *appsv1.Deployment) bool {
+	return d != nil && d.Status.AvailableReplicas > 0
+}
+
+func (c *Controller) getDaemonSetProgress(status *operatorv1.OperatorStatus, daemonSet *appsv1.DaemonSet) (bool, string) {
+	switch {
+	case daemonSet == nil:
+		return true, "Waiting for DaemonSet to be created"
+	case daemonSet.Generation != daemonSet.Status.ObservedGeneration:
+		return true, "Waiting for DaemonSet to act on changes"
+	case daemonSet.Status.NumberUnavailable > 0:
+		return true, "Waiting for DaemonSet to deploy node pods"
+	default:
+		return false, ""
+	}
+	return false, ""
+}
+
+func (c *Controller) getDeploymentProgress(status *operatorv1.OperatorStatus, deployment *appsv1.Deployment) (bool, string) {
+
 	var deploymentExpectedReplicas int32
 	if deployment != nil && deployment.Spec.Replicas != nil {
 		deploymentExpectedReplicas = *deployment.Spec.Replicas
 	}
+
 	switch {
-	// Controller
 	case deployment == nil:
-		// Not reachable in theory, but better to be on the safe side...
-		progressing = operatorv1.ConditionTrue
-		progressingMessage = "Waiting for Deployment to be created"
-
+		return true, "Waiting for Deployment to be created"
 	case deployment.Generation != deployment.Status.ObservedGeneration:
-		progressing = operatorv1.ConditionTrue
-		progressingMessage = "Waiting for Deployment to act on changes"
-
+		return true, "Waiting for Deployment to act on changes"
 	case deployment.Status.UnavailableReplicas > 0:
-		progressing = operatorv1.ConditionTrue
-		progressingMessage = "Waiting for Deployment to deploy controller pods"
-
+		return true, "Waiting for Deployment to deploy controller pods"
 	case deployment.Status.UpdatedReplicas < deploymentExpectedReplicas:
-		progressing = operatorv1.ConditionTrue
-		progressingMessage = "Waiting for Deployment to update pods"
-
+		return true, "Waiting for Deployment to update pods"
 	case deployment.Status.AvailableReplicas < deploymentExpectedReplicas:
-		progressing = operatorv1.ConditionTrue
-		progressingMessage = "Waiting for Deployment to deploy pods"
-	// Node
-	case daemonSet == nil:
-		progressing = operatorv1.ConditionTrue
-		progressingMessage = "Waiting for DaemonSet to be created"
-
-	case daemonSet.Generation != daemonSet.Status.ObservedGeneration:
-		progressing = operatorv1.ConditionTrue
-		progressingMessage = "Waiting for DaemonSet to act on changes"
-
-	case daemonSet.Status.NumberUnavailable > 0:
-		progressing = operatorv1.ConditionTrue
-		progressingMessage = "Waiting for DaemonSet to deploy node pods"
-
-	// TODO: the following seems redundant. Remove if that's not the case.
-
-	// case daemonSet.Status.UpdatedNumberScheduled < daemonSet.Status.DesiredNumberScheduled:
-	// 	progressing = operatorv1.ConditionTrue
-	// 	progressingMessage = "Waiting for DaemonSet to update pods"
-
-	// case daemonSet.Status.NumberAvailable < 1:
-	// 	progressing = operatorv1.ConditionTrue
-	// 	progressingMessage = "Waiting for DaemonSet to deploy pods"
-
+		return true, "Waiting for Deployment to deploy pods"
 	default:
-		progressing = operatorv1.ConditionFalse
+		return false, ""
 	}
-	v1helpers.SetOperatorCondition(&status.Conditions,
-		operatorv1.OperatorCondition{
-			Type:    operatorv1.OperatorStatusTypeProgressing,
-			Status:  progressing,
-			Message: progressingMessage,
-			Reason:  "AsExpected",
-		})
+	return false, ""
 }
 
 func getLogLevel(logLevel operatorv1.LogLevel) int {

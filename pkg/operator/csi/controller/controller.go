@@ -7,7 +7,6 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,14 +17,12 @@ import (
 	appsinformersv1 "k8s.io/client-go/informers/apps/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/operator/events"
-	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 )
 
@@ -63,10 +60,12 @@ type Controller struct {
 	csiDriverName      string
 	csiDriverNamespace string
 
-	operatorClient  v1helpers.OperatorClient
-	kubeClient      kubernetes.Interface
-	dynamicClient   dynamic.Interface
-	versionGetter   status.VersionGetter
+	operatorClient v1helpers.OperatorClient
+	kubeClient     kubernetes.Interface
+	dynamicClient  dynamic.Interface
+
+	// Controller-specific
+	queue           workqueue.RateLimitingInterface
 	eventRecorder   events.Recorder
 	informersSynced []cache.InformerSynced
 
@@ -76,17 +75,7 @@ type Controller struct {
 	nodeManifest        []byte
 	credentialsManifest []byte
 
-	syncHandler func() error
-
-	syncControllerService       func(*operatorv1.OperatorSpec, *operatorv1.OperatorStatus) (*appsv1.Deployment, error)
-	syncNodeService             func(*operatorv1.OperatorSpec, *operatorv1.OperatorStatus) (*appsv1.DaemonSet, error)
-	syncCloudCredentialsRequest func(*operatorv1.OperatorStatus) (*unstructured.Unstructured, error)
-
-	queue workqueue.RateLimitingInterface
-
-	operatorVersion string
-	operandVersion  string
-	images          images
+	images images
 }
 
 type images struct {
@@ -115,11 +104,8 @@ func New(
 		operatorClient:     operatorClient,
 		assetFunc:          assetFunc,
 		kubeClient:         kubeClient,
-		versionGetter:      status.NewVersionGetter(),
 		eventRecorder:      eventRecorder,
 		queue:              workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), csiDriverName),
-		operatorVersion:    os.Getenv(operatorVersionEnvName),
-		operandVersion:     os.Getenv(operandVersionEnvName),
 		images:             imagesFromEnv(),
 	}
 
@@ -127,37 +113,26 @@ func New(
 
 	controller.informersSynced = append(controller.informersSynced, operatorClient.Informer().HasSynced)
 
-	// TODO: remove
-	controller.syncHandler = controller.sync
-
 	return controller
-}
-
-func (c *Controller) Name() string {
-	return c.name
 }
 
 func (c *Controller) WithControllerService(informer appsinformersv1.DeploymentInformer, file string) *Controller {
 	informer.Informer().AddEventHandler(c.eventHandler("deployment"))
 	c.informersSynced = append(c.informersSynced, informer.Informer().HasSynced)
-	// TODO: do I need to set both?
 	c.controllerManifest = c.assetFunc(file)
-	c.syncControllerService = c.syncDeployment
 	return c
 }
 
-func (c *Controller) WithNodeService(dsInformer appsinformersv1.DaemonSetInformer, file string) *Controller {
-	dsInformer.Informer().AddEventHandler(c.eventHandler("daemonSet"))
-	c.informersSynced = append(c.informersSynced, dsInformer.Informer().HasSynced)
+func (c *Controller) WithNodeService(informer appsinformersv1.DaemonSetInformer, file string) *Controller {
+	informer.Informer().AddEventHandler(c.eventHandler("daemonSet"))
+	c.informersSynced = append(c.informersSynced, informer.Informer().HasSynced)
 	c.nodeManifest = c.assetFunc(file)
-	c.syncNodeService = c.syncDaemonSet
 	return c
 }
 
 func (c *Controller) WithCloudCredentials(dynamicClient dynamic.Interface, file string) *Controller {
 	c.dynamicClient = dynamicClient
 	c.credentialsManifest = c.assetFunc(file)
-	c.syncCloudCredentialsRequest = c.syncCredentialsRequest
 	return c
 }
 
@@ -275,27 +250,35 @@ func (c *Controller) updateSyncError(status *operatorv1.OperatorStatus, err erro
 }
 
 func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta, spec *operatorv1.OperatorSpec, status *operatorv1.OperatorStatus) error {
-	credentialsRequest, err := c.syncCloudCredentialsRequest(status)
-	if err != nil {
-		return fmt.Errorf("failed to sync CredentialsRequest: %v", err)
+	// TODO: find a better way to tell the controller to sync the deployment/daemonset/credentials
+
+	var credentialsRequest *unstructured.Unstructured
+	if c.credentialsManifest != nil {
+		cr, err := c.syncCredentialsRequest(status)
+		if err != nil {
+			return fmt.Errorf("failed to sync CredentialsRequest: %v", err)
+		}
+		credentialsRequest = cr
 	}
 
-	// TODO: wait for secret
+	// TODO: wait for secret?
 
 	var controllerService *appsv1.Deployment
-	if c.syncControllerService != nil {
-		controllerService, err = c.syncControllerService(spec, status)
+	if c.controllerManifest != nil {
+		c, err := c.syncDeployment(spec, status)
 		if err != nil {
 			return fmt.Errorf("failed to sync CSI Controller Service: %v", err)
 		}
+		controllerService = c
 	}
 
 	var nodeService *appsv1.DaemonSet
-	if c.syncNodeService != nil {
-		nodeService, err = c.syncNodeService(spec, status)
+	if c.nodeManifest != nil {
+		n, err := c.syncDaemonSet(spec, status)
 		if err != nil {
 			return fmt.Errorf("failed to sync DaemonSet: %v", err)
 		}
+		nodeService = n
 	}
 
 	if err := c.syncStatus(meta, status, controllerService, nodeService, credentialsRequest); err != nil {
@@ -305,23 +288,8 @@ func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta,
 	return nil
 }
 
-func (c *Controller) setVersion(operandName, version string) {
-	if c.versionGetter.GetVersions()[operandName] != version {
-		c.versionGetter.SetVersion(operandName, version)
-	}
-}
-
-func (c *Controller) versionChanged(operandName, version string) bool {
-	return c.versionGetter.GetVersions()[operandName] != version
-}
-
 func (c *Controller) enqueue(obj interface{}) {
-	// we're filtering out config maps that are "leader" based and we don't have logic around them
-	// resyncing on these causes the operator to sync every 14s for no good reason
-	if cm, ok := obj.(*corev1.ConfigMap); ok && cm.GetAnnotations() != nil && cm.GetAnnotations()[resourcelock.LeaderElectionRecordAnnotationKey] != "" {
-		return
-	}
-	// Sync corresponding Driver instance. Since there is only one, sync that one.
+	// Sync corresponding instance. Since there is only one, sync that one.
 	// It will check all other objects (Deployment, DaemonSet) and update/overwrite them as needed.
 	c.queue.Add(globalConfigName)
 }
@@ -355,7 +323,7 @@ func (c *Controller) processNextWorkItem() bool {
 	}
 	defer c.queue.Done(key)
 
-	err := c.syncHandler()
+	err := c.sync()
 	c.handleErr(err, key)
 
 	return true

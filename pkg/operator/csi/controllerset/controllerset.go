@@ -16,6 +16,34 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+type CSIDriverControllerOptions struct {
+	dynamicClient       dynamic.Interface
+	controllerManifest  string
+	nodeManifest        string
+	credentialsManifest string
+}
+
+type CSIDriverControllerOption func(*CSIDriverControllerOptions)
+
+func WithControllerService(file string) CSIDriverControllerOption {
+	return func(o *CSIDriverControllerOptions) {
+		o.controllerManifest = file
+	}
+}
+
+func WithNodeService(file string) CSIDriverControllerOption {
+	return func(o *CSIDriverControllerOptions) {
+		o.nodeManifest = file
+	}
+}
+
+func WithCloudCredentials(dynamicClient dynamic.Interface, file string) CSIDriverControllerOption {
+	return func(o *CSIDriverControllerOptions) {
+		o.dynamicClient = dynamicClient
+		o.credentialsManifest = file
+	}
+}
+
 type ControllerSet struct {
 	logLevelController        factory.Controller
 	managementStateController factory.Controller
@@ -31,15 +59,14 @@ func (c *ControllerSet) Run(ctx context.Context, workers int) {
 		c.logLevelController,
 		c.managementStateController,
 		c.staticResourcesController,
-		// c.csiDriverController,
 	}
+
 	for i := range controllers {
 		if controllers[i] != nil {
 			go controllers[i].Run(ctx, workers)
 		}
 	}
 
-	// TODO: make factory.Controoler
 	go c.csiDriverController.Run(ctx, workers)
 }
 
@@ -77,35 +104,8 @@ func (c *ControllerSet) WithStaticResourcesController(
 	return c
 }
 
-type CSIDriverControllerOptions struct {
-	dynamicClient       dynamic.Interface
-	controllerManifest  string
-	nodeManifest        string
-	credentialsManifest string
-}
-
-type CSIDriverControllerOption func(*CSIDriverControllerOptions)
-
-func WithControllerService(file string) CSIDriverControllerOption {
-	return func(o *CSIDriverControllerOptions) {
-		o.controllerManifest = file
-	}
-}
-
-func WithNodeService(file string) CSIDriverControllerOption {
-	return func(o *CSIDriverControllerOptions) {
-		o.nodeManifest = file
-	}
-}
-
-func WithCloudCredentials(dynamicClient dynamic.Interface, file string) CSIDriverControllerOption {
-	return func(o *CSIDriverControllerOptions) {
-		o.dynamicClient = dynamicClient
-		o.credentialsManifest = file
-	}
-}
-
 func (c *ControllerSet) WithCSIDriverController(
+	name string,
 	csiDriverName string,
 	csiDriverNamespace string,
 	assetFunc func(string) []byte,
@@ -114,7 +114,7 @@ func (c *ControllerSet) WithCSIDriverController(
 	setters ...CSIDriverControllerOption,
 ) *ControllerSet {
 	cdc := controller.New(
-		"AWSEBSDriverController",
+		name,
 		csiDriverName,
 		csiDriverNamespace,
 		c.operatorClient,
