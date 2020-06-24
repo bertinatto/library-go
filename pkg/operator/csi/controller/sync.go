@@ -16,6 +16,17 @@ import (
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 )
 
+const (
+	// Index of a container in assets/controller.yaml and assets/node.yaml
+	csiDriverContainerIndex           = 0 // Both Deployment and DaemonSet
+	provisionerContainerIndex         = 1
+	attacherContainerIndex            = 2
+	resizerContainerIndex             = 3
+	snapshottterContainerIndex        = 4
+	nodeDriverRegistrarContainerIndex = 1
+	livenessProbeContainerIndex       = 2 // Only in DaemonSet
+)
+
 func (c *Controller) syncCredentialsRequest(status *operatorv1.OperatorStatus) (*unstructured.Unstructured, error) {
 	cr := readCredentialRequestsOrDie(c.credentialsManifest)
 
@@ -67,64 +78,6 @@ func (c *Controller) syncDaemonSet(spec *operatorv1.OperatorSpec, status *operat
 	}
 
 	return daemonSet, nil
-}
-
-func (c *Controller) getExpectedDeployment(spec *operatorv1.OperatorSpec) *appsv1.Deployment {
-	deployment := resourceread.ReadDeploymentV1OrDie(c.controllerManifest)
-
-	if c.images.csiDriver != "" {
-		deployment.Spec.Template.Spec.Containers[0].Image = c.images.csiDriver
-	}
-	if c.images.provisioner != "" {
-		deployment.Spec.Template.Spec.Containers[provisionerContainerIndex].Image = c.images.provisioner
-	}
-	if c.images.attacher != "" {
-		deployment.Spec.Template.Spec.Containers[attacherContainerIndex].Image = c.images.attacher
-	}
-	if c.images.resizer != "" {
-		deployment.Spec.Template.Spec.Containers[resizerContainerIndex].Image = c.images.resizer
-	}
-	if c.images.snapshotter != "" {
-		deployment.Spec.Template.Spec.Containers[snapshottterContainerIndex].Image = c.images.snapshotter
-	}
-
-	// TODO: add LivenessProbe when
-
-	logLevel := getLogLevel(spec.LogLevel)
-	for i, container := range deployment.Spec.Template.Spec.Containers {
-		for j, arg := range container.Args {
-			if strings.HasPrefix(arg, "--v=") {
-				deployment.Spec.Template.Spec.Containers[i].Args[j] = fmt.Sprintf("--v=%d", logLevel)
-			}
-		}
-	}
-
-	return deployment
-}
-
-func (c *Controller) getExpectedDaemonSet(spec *operatorv1.OperatorSpec) *appsv1.DaemonSet {
-	daemonSet := resourceread.ReadDaemonSetV1OrDie(c.nodeManifest)
-
-	if c.images.csiDriver != "" {
-		daemonSet.Spec.Template.Spec.Containers[csiDriverContainerIndex].Image = c.images.csiDriver
-	}
-	if c.images.nodeDriverRegistrar != "" {
-		daemonSet.Spec.Template.Spec.Containers[nodeDriverRegistrarContainerIndex].Image = c.images.nodeDriverRegistrar
-	}
-	if c.images.livenessProbe != "" {
-		daemonSet.Spec.Template.Spec.Containers[livenessProbeContainerIndex].Image = c.images.livenessProbe
-	}
-
-	logLevel := getLogLevel(spec.LogLevel)
-	for i, container := range daemonSet.Spec.Template.Spec.Containers {
-		for j, arg := range container.Args {
-			if strings.HasPrefix(arg, "--v=") {
-				daemonSet.Spec.Template.Spec.Containers[i].Args[j] = fmt.Sprintf("--v=%d", logLevel)
-			}
-		}
-	}
-
-	return daemonSet
 }
 
 func (c *Controller) syncStatus(
@@ -252,12 +205,62 @@ func (c *Controller) syncStatus(
 	return nil
 }
 
-func isDaemonSetAvailable(d *appsv1.DaemonSet) bool {
-	return d != nil && d.Status.NumberAvailable > 0
+func (c *Controller) getExpectedDeployment(spec *operatorv1.OperatorSpec) *appsv1.Deployment {
+	deployment := resourceread.ReadDeploymentV1OrDie(c.controllerManifest)
+
+	if c.images.csiDriver != "" {
+		deployment.Spec.Template.Spec.Containers[0].Image = c.images.csiDriver
+	}
+	if c.images.provisioner != "" {
+		deployment.Spec.Template.Spec.Containers[provisionerContainerIndex].Image = c.images.provisioner
+	}
+	if c.images.attacher != "" {
+		deployment.Spec.Template.Spec.Containers[attacherContainerIndex].Image = c.images.attacher
+	}
+	if c.images.resizer != "" {
+		deployment.Spec.Template.Spec.Containers[resizerContainerIndex].Image = c.images.resizer
+	}
+	if c.images.snapshotter != "" {
+		deployment.Spec.Template.Spec.Containers[snapshottterContainerIndex].Image = c.images.snapshotter
+	}
+
+	// TODO: add LivenessProbe when
+
+	logLevel := getLogLevel(spec.LogLevel)
+	for i, container := range deployment.Spec.Template.Spec.Containers {
+		for j, arg := range container.Args {
+			if strings.HasPrefix(arg, "--v=") {
+				deployment.Spec.Template.Spec.Containers[i].Args[j] = fmt.Sprintf("--v=%d", logLevel)
+			}
+		}
+	}
+
+	return deployment
 }
 
-func isDeploymentAvailable(d *appsv1.Deployment) bool {
-	return d != nil && d.Status.AvailableReplicas > 0
+func (c *Controller) getExpectedDaemonSet(spec *operatorv1.OperatorSpec) *appsv1.DaemonSet {
+	daemonSet := resourceread.ReadDaemonSetV1OrDie(c.nodeManifest)
+
+	if c.images.csiDriver != "" {
+		daemonSet.Spec.Template.Spec.Containers[csiDriverContainerIndex].Image = c.images.csiDriver
+	}
+	if c.images.nodeDriverRegistrar != "" {
+		daemonSet.Spec.Template.Spec.Containers[nodeDriverRegistrarContainerIndex].Image = c.images.nodeDriverRegistrar
+	}
+	if c.images.livenessProbe != "" {
+		daemonSet.Spec.Template.Spec.Containers[livenessProbeContainerIndex].Image = c.images.livenessProbe
+	}
+
+	logLevel := getLogLevel(spec.LogLevel)
+	for i, container := range daemonSet.Spec.Template.Spec.Containers {
+		for j, arg := range container.Args {
+			if strings.HasPrefix(arg, "--v=") {
+				daemonSet.Spec.Template.Spec.Containers[i].Args[j] = fmt.Sprintf("--v=%d", logLevel)
+			}
+		}
+	}
+
+	return daemonSet
 }
 
 func (c *Controller) getDaemonSetProgress(status *operatorv1.OperatorStatus, daemonSet *appsv1.DaemonSet) (bool, string) {
@@ -293,6 +296,14 @@ func (c *Controller) getDeploymentProgress(status *operatorv1.OperatorStatus, de
 	}
 
 	return false, ""
+}
+
+func isDaemonSetAvailable(d *appsv1.DaemonSet) bool {
+	return d != nil && d.Status.NumberAvailable > 0
+}
+
+func isDeploymentAvailable(d *appsv1.Deployment) bool {
+	return d != nil && d.Status.AvailableReplicas > 0
 }
 
 func getLogLevel(logLevel operatorv1.LogLevel) int {

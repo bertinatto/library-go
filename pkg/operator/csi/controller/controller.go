@@ -26,8 +26,6 @@ import (
 )
 
 const (
-	operatorVersionEnvName          = "OPERATOR_IMAGE_VERSION"
-	operandVersionEnvName           = "OPERAND_IMAGE_VERSION"
 	driverImageEnvName              = "DRIVER_IMAGE"
 	provisionerImageEnvName         = "PROVISIONER_IMAGE"
 	attacherImageEnvName            = "ATTACHER_IMAGE"
@@ -35,15 +33,6 @@ const (
 	snapshotterImageEnvName         = "SNAPSHOTTER_IMAGE"
 	nodeDriverRegistrarImageEnvName = "NODE_DRIVER_REGISTRAR_IMAGE"
 	livenessProbeImageEnvName       = "LIVENESS_PROBE_IMAGE"
-
-	// Index of a container in assets/controller.yaml and assets/node.yaml
-	csiDriverContainerIndex           = 0 // Both Deployment and DaemonSet
-	provisionerContainerIndex         = 1
-	attacherContainerIndex            = 2
-	resizerContainerIndex             = 3
-	snapshottterContainerIndex        = 4
-	nodeDriverRegistrarContainerIndex = 1
-	livenessProbeContainerIndex       = 2 // Only in DaemonSet
 
 	globalConfigName = "cluster"
 
@@ -57,9 +46,10 @@ type Controller struct {
 	csiDriverName      string
 	csiDriverNamespace string
 
-	operatorClient v1helpers.OperatorClient
+	// Clients used by the controller
 	kubeClient     kubernetes.Interface
 	dynamicClient  dynamic.Interface
+	operatorClient v1helpers.OperatorClient
 
 	// Controller-specific
 	queue           workqueue.RateLimitingInterface
@@ -72,6 +62,7 @@ type Controller struct {
 	nodeManifest        []byte
 	credentialsManifest []byte
 
+	// Sidecar images location
 	images images
 }
 
@@ -107,9 +98,7 @@ func New(
 	}
 
 	operatorClient.Informer().AddEventHandler(controller.eventHandler(csiDriverName))
-
 	controller.informersSynced = append(controller.informersSynced, operatorClient.Informer().HasSynced)
-
 	return controller
 }
 
@@ -134,6 +123,9 @@ func (c *Controller) WithCloudCredentials(dynamicClient dynamic.Interface, file 
 }
 
 func (c *Controller) Run(ctx context.Context, workers int) {
+
+	// TODO: prepare here: require at least node service
+
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
