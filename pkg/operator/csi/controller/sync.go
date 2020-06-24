@@ -268,8 +268,6 @@ func (c *Controller) getDaemonSetProgress(status *operatorv1.OperatorStatus, dae
 		return true, "Waiting for DaemonSet to act on changes"
 	case daemonSet.Status.NumberUnavailable > 0:
 		return true, "Waiting for DaemonSet to deploy node pods"
-	default:
-		return false, ""
 	}
 	return false, ""
 }
@@ -292,9 +290,8 @@ func (c *Controller) getDeploymentProgress(status *operatorv1.OperatorStatus, de
 		return true, "Waiting for Deployment to update pods"
 	case deployment.Status.AvailableReplicas < deploymentExpectedReplicas:
 		return true, "Waiting for Deployment to deploy pods"
-	default:
-		return false, ""
 	}
+
 	return false, ""
 }
 

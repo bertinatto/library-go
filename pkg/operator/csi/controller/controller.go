@@ -19,14 +19,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 )
-
-var log = logf.Log.WithName("csi_driver_controller")
 
 const (
 	operatorVersionEnvName          = "OPERATOR_IMAGE_VERSION"
