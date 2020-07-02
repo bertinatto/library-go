@@ -8,15 +8,14 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/openshift/library-go/pkg/controller/factory"
+	credentialscontroller "github.com/openshift/library-go/pkg/operator/csi/controller/credentials"
+	csidrivercontroller "github.com/openshift/library-go/pkg/operator/csi/controller/driver"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/loglevel"
 	"github.com/openshift/library-go/pkg/operator/management"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/library-go/pkg/operator/staticresourcecontroller"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
-
-	credentialscontroller "github.com/openshift/library-go/pkg/operator/csi/controller/credentials"
-	csidrivercontroller "github.com/openshift/library-go/pkg/operator/csi/controller/driver"
 )
 
 type CSIDriverControllerOptions struct {

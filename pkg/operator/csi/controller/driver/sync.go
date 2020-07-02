@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	// TODO: use container names instead
 	// Index of a container in assets/controller.yaml and assets/node.yaml
 	csiDriverContainerIndex           = 0 // Both Deployment and DaemonSet
 	provisionerContainerIndex         = 1
@@ -187,7 +188,7 @@ func (c *Controller) getExpectedDeployment(spec *operatorv1.OperatorSpec) *appsv
 		deployment.Spec.Template.Spec.Containers[snapshottterContainerIndex].Image = c.images.snapshotter
 	}
 
-	// TODO: add LivenessProbe when
+	// TODO: add LivenessProbe
 
 	logLevel := getLogLevel(spec.LogLevel)
 	for i, container := range deployment.Spec.Template.Spec.Containers {
@@ -239,7 +240,6 @@ func (c *Controller) getDaemonSetProgress(status *operatorv1.OperatorStatus, dae
 }
 
 func (c *Controller) getDeploymentProgress(status *operatorv1.OperatorStatus, deployment *appsv1.Deployment) (bool, string) {
-
 	var deploymentExpectedReplicas int32
 	if deployment != nil && deployment.Spec.Replicas != nil {
 		deploymentExpectedReplicas = *deployment.Spec.Replicas

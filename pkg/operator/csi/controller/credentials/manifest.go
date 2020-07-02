@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/openshift/library-go/pkg/operator/resource/resourcehelper"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -15,14 +14,13 @@ import (
 
 	"github.com/openshift/client-go/config/clientset/versioned/scheme"
 	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/library-go/pkg/operator/resource/resourcehelper"
 )
 
 const (
 	credentialsRequestGroup    = "cloudcredential.openshift.io"
 	credentialsRequestVersion  = "v1"
 	credentialsRequestResource = "credentialsrequests"
-	credentialsRequestKind     = "CredentialsRequest"
-	credentialRequestNamespace = "openshift-cloud-credential-operator"
 
 	specHashAnnotation = "operator.openshift.io/spec-hash"
 )

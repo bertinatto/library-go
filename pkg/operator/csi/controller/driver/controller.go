@@ -165,8 +165,6 @@ func (c *Controller) sync() error {
 
 	c.updateSyncError(opStatus, syncErr)
 
-	// v1helpers.UpdateStatus(c.client, v1helpers.UpdateConditionFn(cond)); updateError != nil {
-
 	// Update the status using our copy
 	_, _, err = v1helpers.UpdateStatus(c.operatorClient, func(status *operatorv1.OperatorStatus) error {
 		// Store a copy of our starting conditions, we need to preserve last transition time
@@ -206,6 +204,7 @@ func (c *Controller) updateSyncError(status *operatorv1.OperatorStatus, err erro
 				Reason:  "OperatorSync",
 				Message: err.Error(),
 			})
+
 		// Operator is Progressing: some action failed, will try to progress more after exp. backoff.
 		// Do not overwrite existing "Progressing=true" condition to keep its message.
 		cnd := v1helpers.FindOperatorCondition(status.Conditions, operatorv1.OperatorStatusTypeProgressing)
@@ -229,7 +228,7 @@ func (c *Controller) updateSyncError(status *operatorv1.OperatorStatus, err erro
 }
 
 func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta, spec *operatorv1.OperatorSpec, status *operatorv1.OperatorStatus) error {
-	// TODO: find a better way to tell the controller to sync the deployment/daemonset/credentials
+	// TODO: find a better way to tell the controller to sync the deployment/daemonset
 
 	// TODO: wait for secret?
 
