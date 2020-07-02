@@ -94,5 +94,5 @@ func (c Controller) sync(ctx context.Context, syncContext factory.SyncContext) e
 		}
 	}
 
-	return nil
+	return err
 }
