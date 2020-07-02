@@ -1,12 +1,10 @@
-package controller
+package credentials
 
 import (
 	"context"
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/openshift/client-go/config/clientset/versioned/scheme"
-	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/resource/resourcehelper"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,6 +12,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/dynamic"
+
+	"github.com/openshift/client-go/config/clientset/versioned/scheme"
+	"github.com/openshift/library-go/pkg/operator/events"
 )
 
 const (

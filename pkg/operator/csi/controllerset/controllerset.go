@@ -3,24 +3,25 @@ package controllerset
 import (
 	"context"
 
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+
 	"github.com/openshift/library-go/pkg/controller/factory"
-	"github.com/openshift/library-go/pkg/operator/csi/controller"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/loglevel"
 	"github.com/openshift/library-go/pkg/operator/management"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/library-go/pkg/operator/staticresourcecontroller"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
+
+	credentialscontroller "github.com/openshift/library-go/pkg/operator/csi/controller/credentials"
+	csidrivercontroller "github.com/openshift/library-go/pkg/operator/csi/controller/driver"
 )
 
 type CSIDriverControllerOptions struct {
-	dynamicClient       dynamic.Interface
-	controllerManifest  string
-	nodeManifest        string
-	credentialsManifest string
+	controllerManifest string
+	nodeManifest       string
 }
 
 type CSIDriverControllerOption func(*CSIDriverControllerOptions)
@@ -37,18 +38,12 @@ func WithNodeService(file string) CSIDriverControllerOption {
 	}
 }
 
-func WithCloudCredentials(dynamicClient dynamic.Interface, file string) CSIDriverControllerOption {
-	return func(o *CSIDriverControllerOptions) {
-		o.dynamicClient = dynamicClient
-		o.credentialsManifest = file
-	}
-}
-
 type ControllerSet struct {
 	logLevelController        factory.Controller
 	managementStateController factory.Controller
 	staticResourcesController factory.Controller
-	csiDriverController       *controller.Controller
+	credentialsController     factory.Controller
+	csiDriverController       *csidrivercontroller.Controller
 
 	operatorClient v1helpers.OperatorClient
 	eventRecorder  events.Recorder
@@ -59,6 +54,7 @@ func (c *ControllerSet) Run(ctx context.Context, workers int) {
 		c.logLevelController,
 		c.managementStateController,
 		c.staticResourcesController,
+		c.credentialsController,
 	}
 
 	for i := range controllers {
@@ -100,7 +96,18 @@ func (c *ControllerSet) WithStaticResourcesController(
 		c.operatorClient,
 		c.eventRecorder,
 	).AddKubeInformers(kubeInformersForNamespace)
+	return c
+}
 
+func (c *ControllerSet) WithCredentialsController(
+	name string,
+	operandNamespace string,
+	assetFunc func(string) []byte,
+	file string,
+	dynamicClient dynamic.Interface,
+) *ControllerSet {
+	manifestFile := assetFunc(file)
+	c.credentialsController = credentialscontroller.New(name, operandNamespace, manifestFile, dynamicClient, c.operatorClient, c.eventRecorder)
 	return c
 }
 
@@ -113,7 +120,7 @@ func (c *ControllerSet) WithCSIDriverController(
 	namespacedInformerFactory informers.SharedInformerFactory,
 	setters ...CSIDriverControllerOption,
 ) *ControllerSet {
-	cdc := controller.New(
+	cdc := csidrivercontroller.New(
 		name,
 		csiDriverName,
 		csiDriverNamespace,
@@ -134,11 +141,6 @@ func (c *ControllerSet) WithCSIDriverController(
 
 	if opts.nodeManifest != "" {
 		cdc = cdc.WithNodeService(namespacedInformerFactory.Apps().V1().DaemonSets(), opts.nodeManifest)
-	}
-
-	if opts.credentialsManifest != "" {
-		cdc = cdc.WithCloudCredentials(opts.dynamicClient, opts.credentialsManifest)
-
 	}
 
 	c.csiDriverController = cdc

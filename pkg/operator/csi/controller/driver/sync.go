@@ -1,4 +1,4 @@
-package controller
+package driver
 
 import (
 	"fmt"
@@ -6,8 +6,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
@@ -26,29 +24,6 @@ const (
 	nodeDriverRegistrarContainerIndex = 1
 	livenessProbeContainerIndex       = 2 // Only in DaemonSet
 )
-
-func (c *Controller) syncCredentialsRequest(status *operatorv1.OperatorStatus) (*unstructured.Unstructured, error) {
-	cr := readCredentialRequestsOrDie(c.credentialsManifest)
-
-	// Set spec.secretRef.namespace
-	err := unstructured.SetNestedField(cr.Object, c.csiDriverNamespace, "spec", "secretRef", "namespace")
-	if err != nil {
-		return nil, err
-	}
-
-	var expectedGeneration int64 = -1
-	generation := resourcemerge.GenerationFor(
-		status.Generations,
-		schema.GroupResource{Group: credentialsRequestGroup, Resource: credentialsRequestResource},
-		cr.GetNamespace(),
-		cr.GetName())
-	if generation != nil {
-		expectedGeneration = generation.LastGeneration
-	}
-
-	cr, _, err = applyCredentialsRequest(c.dynamicClient, c.eventRecorder, cr, expectedGeneration)
-	return cr, err
-}
 
 func (c *Controller) syncDeployment(spec *operatorv1.OperatorSpec, status *operatorv1.OperatorStatus) (*appsv1.Deployment, error) {
 	deploy := c.getExpectedDeployment(spec)
@@ -84,8 +59,7 @@ func (c *Controller) syncStatus(
 	meta *metav1.ObjectMeta,
 	status *operatorv1.OperatorStatus,
 	deployment *appsv1.Deployment,
-	daemonSet *appsv1.DaemonSet,
-	credentialsRequest *unstructured.Unstructured) error {
+	daemonSet *appsv1.DaemonSet) error {
 
 	// Set the last generation change we dealt with
 	status.ObservedGeneration = meta.Generation
@@ -96,17 +70,6 @@ func (c *Controller) syncStatus(
 	// Set number of replicas
 	if daemonSet.Status.NumberUnavailable == 0 {
 		status.ReadyReplicas = daemonSet.Status.UpdatedNumberScheduled
-	}
-
-	// Credentials are optional, so maybe set generation
-	if credentialsRequest != nil {
-		resourcemerge.SetGeneration(&status.Generations, operatorv1.GenerationStatus{
-			Group:          credentialsRequestGroup,
-			Resource:       credentialsRequestResource,
-			Namespace:      credentialsRequest.GetNamespace(),
-			Name:           credentialsRequest.GetName(),
-			LastGeneration: credentialsRequest.GetGeneration(),
-		})
 	}
 
 	// Controller Service is not mandatory as well

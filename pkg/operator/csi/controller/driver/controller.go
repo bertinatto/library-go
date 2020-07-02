@@ -1,4 +1,4 @@
-package controller
+package driver
 
 import (
 	"context"
@@ -10,10 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/dynamic"
 	appsinformersv1 "k8s.io/client-go/informers/apps/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -48,7 +46,6 @@ type Controller struct {
 
 	// Clients used by the controller
 	kubeClient     kubernetes.Interface
-	dynamicClient  dynamic.Interface
 	operatorClient v1helpers.OperatorClient
 
 	// Controller-specific
@@ -57,10 +54,9 @@ type Controller struct {
 	informersSynced []cache.InformerSynced
 
 	// Asset files
-	assetFunc           func(string) []byte
-	controllerManifest  []byte
-	nodeManifest        []byte
-	credentialsManifest []byte
+	assetFunc          func(string) []byte
+	controllerManifest []byte
+	nodeManifest       []byte
 
 	// Sidecar images location
 	images images
@@ -113,12 +109,6 @@ func (c *Controller) WithNodeService(informer appsinformersv1.DaemonSetInformer,
 	informer.Informer().AddEventHandler(c.eventHandler("daemonSet"))
 	c.informersSynced = append(c.informersSynced, informer.Informer().HasSynced)
 	c.nodeManifest = c.assetFunc(file)
-	return c
-}
-
-func (c *Controller) WithCloudCredentials(dynamicClient dynamic.Interface, file string) *Controller {
-	c.dynamicClient = dynamicClient
-	c.credentialsManifest = c.assetFunc(file)
 	return c
 }
 
@@ -241,15 +231,6 @@ func (c *Controller) updateSyncError(status *operatorv1.OperatorStatus, err erro
 func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta, spec *operatorv1.OperatorSpec, status *operatorv1.OperatorStatus) error {
 	// TODO: find a better way to tell the controller to sync the deployment/daemonset/credentials
 
-	var credentialsRequest *unstructured.Unstructured
-	if c.credentialsManifest != nil {
-		cr, err := c.syncCredentialsRequest(status)
-		if err != nil {
-			return fmt.Errorf("failed to sync CredentialsRequest: %v", err)
-		}
-		credentialsRequest = cr
-	}
-
 	// TODO: wait for secret?
 
 	var controllerService *appsv1.Deployment
@@ -270,7 +251,7 @@ func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta,
 		nodeService = n
 	}
 
-	if err := c.syncStatus(meta, status, controllerService, nodeService, credentialsRequest); err != nil {
+	if err := c.syncStatus(meta, status, controllerService, nodeService); err != nil {
 		return fmt.Errorf("failed to sync status: %v", err)
 	}
 
