@@ -41,7 +41,12 @@ func readCredentialRequestsOrDie(objBytes []byte) *unstructured.Unstructured {
 	return udi.(*unstructured.Unstructured)
 }
 
-func applyCredentialsRequest(client dynamic.Interface, recorder events.Recorder, required *unstructured.Unstructured, expectedGeneration int64) (*unstructured.Unstructured, bool, error) {
+func applyCredentialsRequest(
+	client dynamic.Interface,
+	recorder events.Recorder,
+	required *unstructured.Unstructured,
+	expectedGeneration int64,
+) (*unstructured.Unstructured, bool, error) {
 	if required.GetName() == "" {
 		return nil, false, fmt.Errorf("invalid object: name cannot be empty")
 	}
@@ -55,10 +60,17 @@ func applyCredentialsRequest(client dynamic.Interface, recorder events.Recorder,
 	if apierrors.IsNotFound(err) {
 		actual, err := crClient.Create(context.TODO(), required, metav1.CreateOptions{})
 		if err == nil {
-			recorder.Eventf(fmt.Sprintf("%sCreated", required.GetKind()), "Created %s because it was missing", resourcehelper.FormatResourceForCLIWithNamespace(required))
+			recorder.Eventf(
+				fmt.Sprintf("%sCreated", required.GetKind()),
+				"Created %s because it was missing",
+				resourcehelper.FormatResourceForCLIWithNamespace(required))
 			return actual, true, err
 		}
-		recorder.Warningf(fmt.Sprintf("%sCreateFailed", required.GetKind()), "Failed to create %s: %v", resourcehelper.FormatResourceForCLIWithNamespace(required), err)
+		recorder.Warningf(
+			fmt.Sprintf("%sCreateFailed", required.GetKind()),
+			"Failed to create %s: %v",
+			resourcehelper.FormatResourceForCLIWithNamespace(required),
+			err)
 		return nil, false, err
 	}
 	if err != nil {

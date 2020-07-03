@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
@@ -15,15 +16,13 @@ import (
 )
 
 const (
-	// TODO: use container names instead
-	// Index of a container in assets/controller.yaml and assets/node.yaml
-	csiDriverContainerIndex           = 0 // Both Deployment and DaemonSet
-	provisionerContainerIndex         = 1
-	attacherContainerIndex            = 2
-	resizerContainerIndex             = 3
-	snapshottterContainerIndex        = 4
-	nodeDriverRegistrarContainerIndex = 1
-	livenessProbeContainerIndex       = 2 // Only in DaemonSet
+	csiDriverContainerName           = "csi-driver"
+	provisionerContainerName         = "csi-provisioner"
+	attacherContainerName            = "csi-attacher"
+	resizerContainerName             = "csi-resizer"
+	snapshotterContainerName         = "csi-snapshotter"
+	livenessProbeContainerName       = "csi-liveness-probe"
+	nodeDriverRegistrarContainerName = "csi-node-driver-registrar"
 )
 
 func (c *Controller) syncDeployment(spec *operatorv1.OperatorSpec, status *operatorv1.OperatorStatus) (*appsv1.Deployment, error) {
@@ -65,15 +64,15 @@ func (c *Controller) syncStatus(
 	// Set the last generation change we dealt with
 	status.ObservedGeneration = meta.Generation
 
-	// Node Service is mandatory, so always set set  generation
+	// Node Service is mandatory, so always set set generation in DaemonSet
 	resourcemerge.SetDaemonSetGeneration(&status.Generations, daemonSet)
 
-	// Set number of replicas
+	// Set number of replicas of DaemonSet
 	if daemonSet.Status.NumberUnavailable == 0 {
 		status.ReadyReplicas = daemonSet.Status.UpdatedNumberScheduled
 	}
 
-	// Controller Service is not mandatory as well
+	// Controller Service is not mandatory, so optionally set the generation in Deployment
 	if c.controllerManifest != nil {
 		// CSI Controller Service was deployed, set deployment generation
 		resourcemerge.SetDeploymentGeneration(&status.Generations, deployment)
@@ -172,29 +171,48 @@ func (c *Controller) syncStatus(
 func (c *Controller) getExpectedDeployment(spec *operatorv1.OperatorSpec) *appsv1.Deployment {
 	deployment := resourceread.ReadDeploymentV1OrDie(c.controllerManifest)
 
+	containers := deployment.Spec.Template.Spec.Containers
 	if c.images.csiDriver != "" {
-		deployment.Spec.Template.Spec.Containers[0].Image = c.images.csiDriver
-	}
-	if c.images.provisioner != "" {
-		deployment.Spec.Template.Spec.Containers[provisionerContainerIndex].Image = c.images.provisioner
-	}
-	if c.images.attacher != "" {
-		deployment.Spec.Template.Spec.Containers[attacherContainerIndex].Image = c.images.attacher
-	}
-	if c.images.resizer != "" {
-		deployment.Spec.Template.Spec.Containers[resizerContainerIndex].Image = c.images.resizer
-	}
-	if c.images.snapshotter != "" {
-		deployment.Spec.Template.Spec.Containers[snapshottterContainerIndex].Image = c.images.snapshotter
+		if idx := getIndex(containers, csiDriverContainerName); idx > -1 {
+			containers[idx].Image = c.images.csiDriver
+		}
 	}
 
-	// TODO: add LivenessProbe
+	if c.images.provisioner != "" {
+		if idx := getIndex(containers, provisionerContainerName); idx > -1 {
+			containers[idx].Image = c.images.provisioner
+		}
+	}
+
+	if c.images.attacher != "" {
+		if idx := getIndex(containers, attacherContainerName); idx > -1 {
+			containers[idx].Image = c.images.attacher
+		}
+	}
+
+	if c.images.resizer != "" {
+		if idx := getIndex(containers, resizerContainerName); idx > -1 {
+			containers[idx].Image = c.images.resizer
+		}
+	}
+
+	if c.images.snapshotter != "" {
+		if idx := getIndex(containers, snapshotterContainerName); idx > -1 {
+			containers[idx].Image = c.images.snapshotter
+		}
+	}
+
+	if c.images.livenessProbe != "" {
+		if idx := getIndex(containers, livenessProbeContainerName); idx > -1 {
+			containers[idx].Image = c.images.livenessProbe
+		}
+	}
 
 	logLevel := getLogLevel(spec.LogLevel)
-	for i, container := range deployment.Spec.Template.Spec.Containers {
+	for i, container := range containers {
 		for j, arg := range container.Args {
 			if strings.HasPrefix(arg, "--v=") {
-				deployment.Spec.Template.Spec.Containers[i].Args[j] = fmt.Sprintf("--v=%d", logLevel)
+				containers[i].Args[j] = fmt.Sprintf("--v=%d", logLevel)
 			}
 		}
 	}
@@ -205,26 +223,44 @@ func (c *Controller) getExpectedDeployment(spec *operatorv1.OperatorSpec) *appsv
 func (c *Controller) getExpectedDaemonSet(spec *operatorv1.OperatorSpec) *appsv1.DaemonSet {
 	daemonSet := resourceread.ReadDaemonSetV1OrDie(c.nodeManifest)
 
+	containers := daemonSet.Spec.Template.Spec.Containers
 	if c.images.csiDriver != "" {
-		daemonSet.Spec.Template.Spec.Containers[csiDriverContainerIndex].Image = c.images.csiDriver
+		if idx := getIndex(containers, csiDriverContainerName); idx > -1 {
+			containers[idx].Image = c.images.csiDriver
+		}
 	}
+
 	if c.images.nodeDriverRegistrar != "" {
-		daemonSet.Spec.Template.Spec.Containers[nodeDriverRegistrarContainerIndex].Image = c.images.nodeDriverRegistrar
+		if idx := getIndex(containers, nodeDriverRegistrarContainerName); idx > -1 {
+			containers[idx].Image = c.images.nodeDriverRegistrar
+		}
 	}
+
 	if c.images.livenessProbe != "" {
-		daemonSet.Spec.Template.Spec.Containers[livenessProbeContainerIndex].Image = c.images.livenessProbe
+		if idx := getIndex(containers, livenessProbeContainerName); idx > -1 {
+			containers[idx].Image = c.images.livenessProbe
+		}
 	}
 
 	logLevel := getLogLevel(spec.LogLevel)
-	for i, container := range daemonSet.Spec.Template.Spec.Containers {
+	for i, container := range containers {
 		for j, arg := range container.Args {
 			if strings.HasPrefix(arg, "--v=") {
-				daemonSet.Spec.Template.Spec.Containers[i].Args[j] = fmt.Sprintf("--v=%d", logLevel)
+				containers[i].Args[j] = fmt.Sprintf("--v=%d", logLevel)
 			}
 		}
 	}
 
 	return daemonSet
+}
+
+func getIndex(containers []v1.Container, name string) int {
+	for i := range containers {
+		if containers[i].Name == name {
+			return i
+		}
+	}
+	return -1
 }
 
 func (c *Controller) getDaemonSetProgress(status *operatorv1.OperatorStatus, daemonSet *appsv1.DaemonSet) (bool, string) {

@@ -38,28 +38,23 @@ const (
 )
 
 type Controller struct {
-	name string
-
-	// CSI Driver information
-	csiDriverName      string
-	csiDriverNamespace string
-
-	// Clients used by the controller
-	kubeClient     kubernetes.Interface
-	operatorClient v1helpers.OperatorClient
-
-	// Controller-specific
+	// Controller
+	name            string
 	queue           workqueue.RateLimitingInterface
 	eventRecorder   events.Recorder
 	informersSynced []cache.InformerSynced
 
-	// Asset files
+	// CSI driver
+	csiDriverName      string
+	csiDriverNamespace string
 	assetFunc          func(string) []byte
 	controllerManifest []byte
 	nodeManifest       []byte
+	images             images
 
-	// Sidecar images location
-	images images
+	// Resources
+	kubeClient     kubernetes.Interface
+	operatorClient v1helpers.OperatorClient
 }
 
 type images struct {
@@ -85,14 +80,13 @@ func New(
 		name:               name,
 		csiDriverName:      csiDriverName,
 		csiDriverNamespace: csiDriverNamespace,
+		kubeClient:         kubeClient,
 		operatorClient:     operatorClient,
 		assetFunc:          assetFunc,
-		kubeClient:         kubeClient,
-		eventRecorder:      eventRecorder,
-		queue:              workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), csiDriverName),
 		images:             imagesFromEnv(),
+		queue:              workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), csiDriverName),
+		eventRecorder:      eventRecorder,
 	}
-
 	operatorClient.Informer().AddEventHandler(controller.eventHandler(csiDriverName))
 	controller.informersSynced = append(controller.informersSynced, operatorClient.Informer().HasSynced)
 	return controller
@@ -113,14 +107,15 @@ func (c *Controller) WithNodeService(informer appsinformersv1.DaemonSetInformer,
 }
 
 func (c *Controller) Run(ctx context.Context, workers int) {
-
-	// TODO: prepare here: require at least node service
-
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	stopCh := ctx.Done()
+	if c.nodeManifest == nil {
+		klog.Errorf("Controller doesn't have a CSI Node Service, quitting")
+		return
+	}
 
+	stopCh := ctx.Done()
 	if !cache.WaitForCacheSync(stopCh, c.informersSynced...) {
 		return
 	}
@@ -228,10 +223,6 @@ func (c *Controller) updateSyncError(status *operatorv1.OperatorStatus, err erro
 }
 
 func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta, spec *operatorv1.OperatorSpec, status *operatorv1.OperatorStatus) error {
-	// TODO: find a better way to tell the controller to sync the deployment/daemonset
-
-	// TODO: wait for secret?
-
 	var controllerService *appsv1.Deployment
 	if c.controllerManifest != nil {
 		c, err := c.syncDeployment(spec, status)
@@ -258,8 +249,6 @@ func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta,
 }
 
 func (c *Controller) enqueue(obj interface{}) {
-	// Sync corresponding instance. Since there is only one, sync that one.
-	// It will check all other objects (Deployment, DaemonSet) and update/overwrite them as needed.
 	c.queue.Add(globalConfigName)
 }
 

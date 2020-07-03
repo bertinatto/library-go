@@ -49,20 +49,17 @@ type ControllerSet struct {
 }
 
 func (c *ControllerSet) Run(ctx context.Context, workers int) {
-	controllers := []factory.Controller{
+	for _, controller := range []interface {
+		Run(context.Context, int)
+	}{
 		c.logLevelController,
 		c.managementStateController,
 		c.staticResourcesController,
 		c.credentialsController,
+		c.csiDriverController,
+	} {
+		go controller.Run(ctx, 1)
 	}
-
-	for i := range controllers {
-		if controllers[i] != nil {
-			go controllers[i].Run(ctx, workers)
-		}
-	}
-
-	go c.csiDriverController.Run(ctx, workers)
 }
 
 func (c *ControllerSet) WithLogLevelController() *ControllerSet {
@@ -72,11 +69,9 @@ func (c *ControllerSet) WithLogLevelController() *ControllerSet {
 
 func (c *ControllerSet) WithManagementStateController(operandName string, supportsOperandRemoval bool) *ControllerSet {
 	c.managementStateController = management.NewOperatorManagementStateController(operandName, c.operatorClient, c.eventRecorder)
-
 	if supportsOperandRemoval {
 		management.SetOperatorNotRemovable()
 	}
-
 	return c
 }
 

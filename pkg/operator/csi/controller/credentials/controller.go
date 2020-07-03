@@ -25,7 +25,14 @@ type Controller struct {
 	dynamicClient   dynamic.Interface
 }
 
-func New(name, targetNamespace string, manifest []byte, dynamicClient dynamic.Interface, operatorClient v1helpers.OperatorClient, recorder events.Recorder) factory.Controller {
+func New(
+	name,
+	targetNamespace string,
+	manifest []byte,
+	dynamicClient dynamic.Interface,
+	operatorClient v1helpers.OperatorClient,
+	recorder events.Recorder,
+) factory.Controller {
 	c := &Controller{
 		name:            name,
 		operatorClient:  operatorClient,
@@ -45,10 +52,11 @@ func New(name, targetNamespace string, manifest []byte, dynamicClient dynamic.In
 	)
 }
 
-func (c Controller) syncCredentialsRequest(status *operatorv1.OperatorStatus, syncContext factory.SyncContext) (*unstructured.Unstructured, error) {
+func (c Controller) syncCredentialsRequest(
+	status *operatorv1.OperatorStatus,
+	syncContext factory.SyncContext,
+) (*unstructured.Unstructured, error) {
 	cr := readCredentialRequestsOrDie(c.manifest)
-
-	// Set spec.secretRef.namespace
 	err := unstructured.SetNestedField(cr.Object, c.targetNamespace, "spec", "secretRef", "namespace")
 	if err != nil {
 		return nil, err
@@ -81,18 +89,18 @@ func (c Controller) sync(ctx context.Context, syncContext factory.SyncContext) e
 		Reason: "AsExpected",
 	}
 
-	_, err = c.syncCredentialsRequest(status, syncContext)
-	if err != nil {
+	_, syncError := c.syncCredentialsRequest(status, syncContext)
+	if syncError != nil {
 		cond.Status = operatorv1.ConditionTrue
 		cond.Reason = "SyncError"
-		cond.Message = err.Error()
+		cond.Message = syncError.Error()
 	}
 
-	if _, _, updateError := v1helpers.UpdateStatus(c.operatorClient, v1helpers.UpdateConditionFn(cond)); updateError != nil {
-		if err == nil {
-			return updateError
+	if _, _, err := v1helpers.UpdateStatus(c.operatorClient, v1helpers.UpdateConditionFn(cond)); err != nil {
+		if syncError == nil {
+			return err
 		}
 	}
 
-	return err
+	return syncError
 }
