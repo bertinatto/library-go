@@ -47,8 +47,8 @@ func New(
 	).ResyncEvery(
 		time.Second,
 	).ToController(
-		"CredentialsController",
-		recorder.WithComponentSuffix("credentials-recorder"),
+		name,
+		recorder.WithComponentSuffix(name),
 	)
 }
 
