@@ -58,7 +58,9 @@ func (c *ControllerSet) Run(ctx context.Context, workers int) {
 		c.credentialsController,
 		c.csiDriverController,
 	} {
-		go controller.Run(ctx, 1)
+		if controller != nil {
+			go controller.Run(ctx, 1)
+		}
 	}
 }
 
