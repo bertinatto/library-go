@@ -2,7 +2,6 @@ package credentials
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -10,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 
-	operatorv1 "github.com/openshift/api/operator/v1"
+	opv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
@@ -46,6 +45,8 @@ func New(
 		c.sync,
 	).ResyncEvery(
 		time.Minute,
+	).WithSyncDegradedOnError(
+		operatorClient,
 	).ToController(
 		name,
 		recorder.WithComponentSuffix(name),
@@ -53,7 +54,7 @@ func New(
 }
 
 func (c Controller) syncCredentialsRequest(
-	status *operatorv1.OperatorStatus,
+	status *opv1.OperatorStatus,
 	syncContext factory.SyncContext,
 ) (*unstructured.Unstructured, error) {
 	cr := readCredentialRequestsOrDie(c.manifest)
@@ -82,25 +83,6 @@ func (c Controller) sync(ctx context.Context, syncContext factory.SyncContext) e
 		syncContext.Recorder().Warningf("StatusNotFound", "Unable to determine current operator status for %s", c.name)
 		return nil
 	}
-
-	cond := operatorv1.OperatorCondition{
-		Type:   fmt.Sprintf("%sDegraded", c.name),
-		Status: operatorv1.ConditionFalse,
-		Reason: "AsExpected",
-	}
-
-	_, syncError := c.syncCredentialsRequest(status, syncContext)
-	if syncError != nil {
-		cond.Status = operatorv1.ConditionTrue
-		cond.Reason = "SyncError"
-		cond.Message = syncError.Error()
-	}
-
-	if _, _, err := v1helpers.UpdateStatus(c.operatorClient, v1helpers.UpdateConditionFn(cond)); err != nil {
-		if syncError == nil {
-			return err
-		}
-	}
-
-	return syncError
+	_, err = c.syncCredentialsRequest(status, syncContext)
+	return err
 }

@@ -61,7 +61,7 @@ func TestSync(t *testing.T) {
 			}
 
 			operatorClient := v1helpers.NewFakeOperatorClient(&opv1.OperatorSpec{}, &opv1.OperatorStatus{}, nil)
-			recorder := events.NewInMemoryRecorder("controller")
+			recorder := events.NewInMemoryRecorder("test")
 			controller := New(
 				"TestController",
 				operandNamespace,
@@ -72,16 +72,15 @@ func TestSync(t *testing.T) {
 			)
 
 			// Act
-			controller.Sync(context.TODO(), factory.NewSyncContext("test", recorder))
-			_, result, _, _ := operatorClient.GetOperatorState()
+			err := controller.Sync(context.TODO(), factory.NewSyncContext("test", recorder))
 
 			// Assert
-			if tc.expectedFailingStatus && result.Conditions[0].Type == "TestControllerDegraded" && result.Conditions[0].Status == opv1.ConditionFalse {
-				t.Fatalf("expected failing conditions")
+			if tc.expectedFailingStatus && err == nil {
+				t.Fatalf("expected failed sync")
 			}
 
-			if !tc.expectedFailingStatus && result.Conditions[0].Type == "TestControllerDegraded" && result.Conditions[0].Status != opv1.ConditionFalse {
-				t.Fatalf("unexpected failing conditions: %#v", result.Conditions)
+			if !tc.expectedFailingStatus && err != nil {
+				t.Fatalf("unexpected failed sync: %v", err)
 			}
 		})
 	}
