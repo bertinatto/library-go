@@ -18,7 +18,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	operatorv1 "github.com/openshift/api/operator/v1"
+	opv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 )
@@ -189,7 +189,7 @@ func (c *Controller) sync() error {
 	}
 
 	// We only support Managed for now
-	if opSpec.ManagementState != operatorv1.Managed {
+	if opSpec.ManagementState != opv1.Managed {
 		return nil
 	}
 
@@ -207,7 +207,7 @@ func (c *Controller) sync() error {
 	c.updateSyncError(opStatus, syncErr)
 
 	// Update the status using our copy
-	_, _, err = v1helpers.UpdateStatus(c.operatorClient, func(status *operatorv1.OperatorStatus) error {
+	_, _, err = v1helpers.UpdateStatus(c.operatorClient, func(status *opv1.OperatorStatus) error {
 		// Store a copy of our starting conditions, we need to preserve last transition time
 		originalConditions := status.DeepCopy().Conditions
 
@@ -235,40 +235,40 @@ func (c *Controller) sync() error {
 	return syncErr
 }
 
-func (c *Controller) updateSyncError(status *operatorv1.OperatorStatus, err error) {
+func (c *Controller) updateSyncError(status *opv1.OperatorStatus, err error) {
 	if err != nil {
 		// Operator is Degraded: could not finish what it was doing
 		v1helpers.SetOperatorCondition(&status.Conditions,
-			operatorv1.OperatorCondition{
-				Type:    operatorv1.OperatorStatusTypeDegraded,
-				Status:  operatorv1.ConditionTrue,
+			opv1.OperatorCondition{
+				Type:    opv1.OperatorStatusTypeDegraded,
+				Status:  opv1.ConditionTrue,
 				Reason:  "OperatorSync",
 				Message: err.Error(),
 			})
 
 		// Operator is Progressing: some action failed, will try to progress more after exp. backoff.
 		// Do not overwrite existing "Progressing=true" condition to keep its message.
-		cnd := v1helpers.FindOperatorCondition(status.Conditions, operatorv1.OperatorStatusTypeProgressing)
-		if cnd == nil || cnd.Status == operatorv1.ConditionFalse {
+		cnd := v1helpers.FindOperatorCondition(status.Conditions, opv1.OperatorStatusTypeProgressing)
+		if cnd == nil || cnd.Status == opv1.ConditionFalse {
 			v1helpers.SetOperatorCondition(&status.Conditions,
-				operatorv1.OperatorCondition{
-					Type:    operatorv1.OperatorStatusTypeProgressing,
-					Status:  operatorv1.ConditionTrue,
+				opv1.OperatorCondition{
+					Type:    opv1.OperatorStatusTypeProgressing,
+					Status:  opv1.ConditionTrue,
 					Reason:  "OperatorSync",
 					Message: err.Error(),
 				})
 		}
 	} else {
 		v1helpers.SetOperatorCondition(&status.Conditions,
-			operatorv1.OperatorCondition{
-				Type:   operatorv1.OperatorStatusTypeDegraded,
-				Status: operatorv1.ConditionFalse,
+			opv1.OperatorCondition{
+				Type:   opv1.OperatorStatusTypeDegraded,
+				Status: opv1.ConditionFalse,
 			})
 		// Progressing condition was set in c.handleSync().
 	}
 }
 
-func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta, spec *operatorv1.OperatorSpec, status *operatorv1.OperatorStatus) error {
+func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta, spec *opv1.OperatorSpec, status *opv1.OperatorStatus) error {
 	var controllerService *appsv1.Deployment
 	if c.controllerManifest != nil {
 		c, err := c.syncDeployment(spec, status)

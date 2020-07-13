@@ -8,7 +8,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	operatorv1 "github.com/openshift/api/operator/v1"
+	opv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
@@ -25,7 +25,7 @@ const (
 	nodeDriverRegistrarContainerName = "csi-node-driver-registrar"
 )
 
-func (c *Controller) syncDeployment(spec *operatorv1.OperatorSpec, status *operatorv1.OperatorStatus) (*appsv1.Deployment, error) {
+func (c *Controller) syncDeployment(spec *opv1.OperatorSpec, status *opv1.OperatorStatus) (*appsv1.Deployment, error) {
 	deploy := c.getExpectedDeployment(spec)
 
 	deploy, _, err := resourceapply.ApplyDeployment(
@@ -40,7 +40,7 @@ func (c *Controller) syncDeployment(spec *operatorv1.OperatorSpec, status *opera
 	return deploy, nil
 }
 
-func (c *Controller) syncDaemonSet(spec *operatorv1.OperatorSpec, status *operatorv1.OperatorStatus) (*appsv1.DaemonSet, error) {
+func (c *Controller) syncDaemonSet(spec *opv1.OperatorSpec, status *opv1.OperatorStatus) (*appsv1.DaemonSet, error) {
 	daemonSet := c.getExpectedDaemonSet(spec)
 
 	daemonSet, _, err := resourceapply.ApplyDaemonSet(
@@ -57,7 +57,7 @@ func (c *Controller) syncDaemonSet(spec *operatorv1.OperatorSpec, status *operat
 
 func (c *Controller) syncStatus(
 	meta *metav1.ObjectMeta,
-	status *operatorv1.OperatorStatus,
+	status *opv1.OperatorStatus,
 	deployment *appsv1.Deployment,
 	daemonSet *appsv1.DaemonSet) error {
 
@@ -89,31 +89,31 @@ func (c *Controller) syncStatus(
 
 	// The operator does not have any prerequisites (at least now)
 	v1helpers.SetOperatorCondition(&status.Conditions,
-		operatorv1.OperatorCondition{
-			Type:   operatorv1.OperatorStatusTypePrereqsSatisfied,
-			Status: operatorv1.ConditionTrue,
+		opv1.OperatorCondition{
+			Type:   opv1.OperatorStatusTypePrereqsSatisfied,
+			Status: opv1.ConditionTrue,
 		})
 
 	// The operator is always upgradeable (at least now)
 	v1helpers.SetOperatorCondition(&status.Conditions,
-		operatorv1.OperatorCondition{
-			Type:   operatorv1.OperatorStatusTypeUpgradeable,
-			Status: operatorv1.ConditionTrue,
+		opv1.OperatorCondition{
+			Type:   opv1.OperatorStatusTypeUpgradeable,
+			Status: opv1.ConditionTrue,
 		})
 
 	// The operator is avaiable for now
 	v1helpers.SetOperatorCondition(&status.Conditions,
-		operatorv1.OperatorCondition{
-			Type:   operatorv1.OperatorStatusTypeAvailable,
-			Status: operatorv1.ConditionTrue,
+		opv1.OperatorCondition{
+			Type:   opv1.OperatorStatusTypeAvailable,
+			Status: opv1.ConditionTrue,
 		})
 
 	// Make it not available if daemonSet hasn't deployed the pods
 	if !isDaemonSetAvailable(daemonSet) {
 		v1helpers.SetOperatorCondition(&status.Conditions,
-			operatorv1.OperatorCondition{
-				Type:    operatorv1.OperatorStatusTypeAvailable,
-				Status:  operatorv1.ConditionFalse,
+			opv1.OperatorCondition{
+				Type:    opv1.OperatorStatusTypeAvailable,
+				Status:  opv1.ConditionFalse,
 				Message: "Waiting for the DaemonSet to deploy the CSI Node Service",
 				Reason:  "AsExpected",
 			})
@@ -123,9 +123,9 @@ func (c *Controller) syncStatus(
 	if c.controllerManifest != nil {
 		if !isDeploymentAvailable(deployment) {
 			v1helpers.SetOperatorCondition(&status.Conditions,
-				operatorv1.OperatorCondition{
-					Type:    operatorv1.OperatorStatusTypeAvailable,
-					Status:  operatorv1.ConditionFalse,
+				opv1.OperatorCondition{
+					Type:    opv1.OperatorStatusTypeAvailable,
+					Status:  opv1.ConditionFalse,
 					Message: "Waiting for Deployment to deploy the CSI Controller Service",
 					Reason:  "AsExpected",
 				})
@@ -134,18 +134,18 @@ func (c *Controller) syncStatus(
 
 	// The operator is not progressing for now
 	v1helpers.SetOperatorCondition(&status.Conditions,
-		operatorv1.OperatorCondition{
-			Type:   operatorv1.OperatorStatusTypeProgressing,
-			Status: operatorv1.ConditionFalse,
+		opv1.OperatorCondition{
+			Type:   opv1.OperatorStatusTypeProgressing,
+			Status: opv1.ConditionFalse,
 			Reason: "AsExpected",
 		})
 
 	isProgressing, msg := c.getDaemonSetProgress(status, daemonSet)
 	if isProgressing {
 		v1helpers.SetOperatorCondition(&status.Conditions,
-			operatorv1.OperatorCondition{
-				Type:    operatorv1.OperatorStatusTypeProgressing,
-				Status:  operatorv1.ConditionTrue,
+			opv1.OperatorCondition{
+				Type:    opv1.OperatorStatusTypeProgressing,
+				Status:  opv1.ConditionTrue,
 				Message: msg,
 				Reason:  "AsExpected",
 			})
@@ -156,9 +156,9 @@ func (c *Controller) syncStatus(
 		isProgressing, msg := c.getDeploymentProgress(status, deployment)
 		if isProgressing {
 			v1helpers.SetOperatorCondition(&status.Conditions,
-				operatorv1.OperatorCondition{
-					Type:    operatorv1.OperatorStatusTypeProgressing,
-					Status:  operatorv1.ConditionTrue,
+				opv1.OperatorCondition{
+					Type:    opv1.OperatorStatusTypeProgressing,
+					Status:  opv1.ConditionTrue,
 					Message: msg,
 					Reason:  "AsExpected",
 				})
@@ -168,7 +168,7 @@ func (c *Controller) syncStatus(
 	return nil
 }
 
-func (c *Controller) getExpectedDeployment(spec *operatorv1.OperatorSpec) *appsv1.Deployment {
+func (c *Controller) getExpectedDeployment(spec *opv1.OperatorSpec) *appsv1.Deployment {
 	deployment := resourceread.ReadDeploymentV1OrDie(c.controllerManifest)
 
 	containers := deployment.Spec.Template.Spec.Containers
@@ -220,7 +220,7 @@ func (c *Controller) getExpectedDeployment(spec *operatorv1.OperatorSpec) *appsv
 	return deployment
 }
 
-func (c *Controller) getExpectedDaemonSet(spec *operatorv1.OperatorSpec) *appsv1.DaemonSet {
+func (c *Controller) getExpectedDaemonSet(spec *opv1.OperatorSpec) *appsv1.DaemonSet {
 	daemonSet := resourceread.ReadDaemonSetV1OrDie(c.nodeManifest)
 
 	containers := daemonSet.Spec.Template.Spec.Containers
@@ -263,7 +263,7 @@ func getIndex(containers []v1.Container, name string) int {
 	return -1
 }
 
-func (c *Controller) getDaemonSetProgress(status *operatorv1.OperatorStatus, daemonSet *appsv1.DaemonSet) (bool, string) {
+func (c *Controller) getDaemonSetProgress(status *opv1.OperatorStatus, daemonSet *appsv1.DaemonSet) (bool, string) {
 	switch {
 	case daemonSet == nil:
 		return true, "Waiting for DaemonSet to be created"
@@ -275,7 +275,7 @@ func (c *Controller) getDaemonSetProgress(status *operatorv1.OperatorStatus, dae
 	return false, ""
 }
 
-func (c *Controller) getDeploymentProgress(status *operatorv1.OperatorStatus, deployment *appsv1.Deployment) (bool, string) {
+func (c *Controller) getDeploymentProgress(status *opv1.OperatorStatus, deployment *appsv1.Deployment) (bool, string) {
 	var deploymentExpectedReplicas int32
 	if deployment != nil && deployment.Spec.Replicas != nil {
 		deploymentExpectedReplicas = *deployment.Spec.Replicas
@@ -305,15 +305,15 @@ func isDeploymentAvailable(d *appsv1.Deployment) bool {
 	return d != nil && d.Status.AvailableReplicas > 0
 }
 
-func getLogLevel(logLevel operatorv1.LogLevel) int {
+func getLogLevel(logLevel opv1.LogLevel) int {
 	switch logLevel {
-	case operatorv1.Normal, "":
+	case opv1.Normal, "":
 		return 2
-	case operatorv1.Debug:
+	case opv1.Debug:
 		return 4
-	case operatorv1.Trace:
+	case opv1.Trace:
 		return 6
-	case operatorv1.TraceAll:
+	case opv1.TraceAll:
 		return 100
 	default:
 		return 2
