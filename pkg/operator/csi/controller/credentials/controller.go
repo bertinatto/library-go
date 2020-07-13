@@ -45,7 +45,7 @@ func New(
 	).WithSync(
 		c.sync,
 	).ResyncEvery(
-		time.Second,
+		time.Minute,
 	).ToController(
 		name,
 		recorder.WithComponentSuffix(name),
