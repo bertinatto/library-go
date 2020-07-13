@@ -37,6 +37,46 @@ const (
 	maxRetries = 15
 )
 
+// Controller is a controller that deploys a CSI driver operand to a given namespace.
+//
+// A CSI driver operand is typically made of of a DaemonSet and a Deployment. The DaemonSet
+// deploys a pod with the CSI driver and sidecars containers (node-driver-registrar and liveness-probe).
+// The Deployment deploys a pod with the CSI driver and sidecars containers (provisioner, attacher,
+// resizer, snapshotter, liveness-probe).
+//
+// Container names in both the Deployment and DaemonSet MUST follow the following nomenclature so that the
+// controller knows how to patch their fields:
+//
+// CSI driver: csi-driver
+// Provisionier: csi-provisioner
+// Attacher: csi-attacher
+// Resizer: csi-resizer
+// Snapshotter: csi-snapshotter
+// Liveness probe: csi-liveness-probe
+// Node driver registrar: csi-node-driver-registrar
+//
+// On every sync, this controller reads both the Deployment and the DaemonSet from static files and overrides a few fields:
+//
+// 1. Container image location
+//
+// The controller will replace the image specified in the static files if its respective environemnt variable is set. This
+// is a list of environment variables that the controller understands:
+//
+// DRIVER_IMAGE
+// PROVISIONER_IMAGE
+// ATTACHER_IMAGE
+// RESIZER_IMAGE
+// SNAPSHOTTER_IMAGE
+// NODE_DRIVER_REGISTRAR_IMAGE
+// LIVENESS_PROBE_IMAGE
+//
+// 2. Log level
+//
+// The controller can also override the log level passed in to the CSI driver container.
+//
+// In order to do that, the flag `--v=` passed in to the csi-driver container is replaced with value specified
+// in the OperatorClient resource (Spec.LogLevel). That being said, it's expected that the csi-driver container sets
+// its log level based on the `--v=` flag, which is initialized by default if the driver uses the package klog.
 type Controller struct {
 	// Controller
 	name            string
@@ -67,6 +107,9 @@ type images struct {
 	livenessProbe       string
 }
 
+// New returns a new Controller without any CSI Service.
+// It's expected that the CSI Services are added to the controller returned by
+// this function using Service's respective factory function.
 func New(
 	name string,
 	csiDriverName string,
@@ -92,6 +135,7 @@ func New(
 	return controller
 }
 
+// WithControllerService returns a Controller with the CSI Controller Service.
 func (c *Controller) WithControllerService(informer appsinformersv1.DeploymentInformer, file string) *Controller {
 	informer.Informer().AddEventHandler(c.eventHandler("deployment"))
 	c.informersSynced = append(c.informersSynced, informer.Informer().HasSynced)
@@ -99,6 +143,7 @@ func (c *Controller) WithControllerService(informer appsinformersv1.DeploymentIn
 	return c
 }
 
+// WithNodeService returns a Controller with the CSI Node Service.
 func (c *Controller) WithNodeService(informer appsinformersv1.DaemonSetInformer, file string) *Controller {
 	informer.Informer().AddEventHandler(c.eventHandler("daemonSet"))
 	c.informersSynced = append(c.informersSynced, informer.Informer().HasSynced)
@@ -106,6 +151,7 @@ func (c *Controller) WithNodeService(informer appsinformersv1.DaemonSetInformer,
 	return c
 }
 
+// Run starts syncing the controller.
 func (c *Controller) Run(ctx context.Context, workers int) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()

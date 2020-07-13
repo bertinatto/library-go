@@ -18,25 +18,32 @@ import (
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 )
 
+// CSIDriverControllerOptions contains file names for manifests for both CSI Driver Deployment and DaemonSet.
 type CSIDriverControllerOptions struct {
 	controllerManifest string
 	nodeManifest       string
 }
 
+// CSIDriverControllerOption is a modifier function for CSIDriverControllerOptions.
 type CSIDriverControllerOption func(*CSIDriverControllerOptions)
 
+// WithControllerService returns a CSIDriverControllerOption
+// with a Deployment (CSI Controller Service) manifest file.
 func WithControllerService(file string) CSIDriverControllerOption {
 	return func(o *CSIDriverControllerOptions) {
 		o.controllerManifest = file
 	}
 }
 
+// WithNodeService returns a CSIDriverControllerOption
+// with a DaemonSet (CSI Node Service) manifest file.
 func WithNodeService(file string) CSIDriverControllerOption {
 	return func(o *CSIDriverControllerOptions) {
 		o.nodeManifest = file
 	}
 }
 
+// ControllerSet contains a set of controllers that are usually used to deploy CSI Drivers.
 type ControllerSet struct {
 	logLevelController        factory.Controller
 	managementStateController factory.Controller
@@ -48,6 +55,7 @@ type ControllerSet struct {
 	eventRecorder  events.Recorder
 }
 
+// Run starts all controllers initialized in the set.
 func (c *ControllerSet) Run(ctx context.Context, workers int) {
 	for _, controller := range []interface {
 		Run(context.Context, int)
@@ -64,11 +72,13 @@ func (c *ControllerSet) Run(ctx context.Context, workers int) {
 	}
 }
 
+// WithLogLevelController returns a *ControllerSet with a log level controller initialized.
 func (c *ControllerSet) WithLogLevelController() *ControllerSet {
 	c.logLevelController = loglevel.NewClusterOperatorLoggingController(c.operatorClient, c.eventRecorder)
 	return c
 }
 
+// WithManagementStateController returns a *ControllerSet with a management state controller initialized.
 func (c *ControllerSet) WithManagementStateController(operandName string, supportsOperandRemoval bool) *ControllerSet {
 	c.managementStateController = management.NewOperatorManagementStateController(operandName, c.operatorClient, c.eventRecorder)
 	if supportsOperandRemoval {
@@ -77,6 +87,7 @@ func (c *ControllerSet) WithManagementStateController(operandName string, suppor
 	return c
 }
 
+// WithStaticResourcesController returns a *ControllerSet with a static resources controller initialized.
 func (c *ControllerSet) WithStaticResourcesController(
 	name string,
 	kubeClient kubernetes.Interface,
@@ -95,6 +106,7 @@ func (c *ControllerSet) WithStaticResourcesController(
 	return c
 }
 
+// WithCredentialsController returns a *ControllerSet with a credentials controller initialized.
 func (c *ControllerSet) WithCredentialsController(
 	name string,
 	operandNamespace string,
@@ -107,6 +119,7 @@ func (c *ControllerSet) WithCredentialsController(
 	return c
 }
 
+// WithCSIDriverController returns a *ControllerSet with a CSI Driver controller initialized.
 func (c *ControllerSet) WithCSIDriverController(
 	name string,
 	csiDriverName string,
@@ -144,6 +157,7 @@ func (c *ControllerSet) WithCSIDriverController(
 	return c
 }
 
+// New returns a basic *ControllerSet without any controller.
 func New(operatorClient v1helpers.OperatorClient, eventRecorder events.Recorder) *ControllerSet {
 	return &ControllerSet{
 		operatorClient: operatorClient,

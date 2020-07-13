@@ -16,6 +16,8 @@ import (
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 )
 
+// Controller is a simple controller that maintains a CredentialsRequest static manifest.
+// It uses unstructured.Unstructured as currently there's no API type for this resource.
 type Controller struct {
 	name            string
 	operatorClient  v1helpers.OperatorClient
@@ -24,6 +26,7 @@ type Controller struct {
 	dynamicClient   dynamic.Interface
 }
 
+// New returns a Controller.
 func New(
 	name,
 	targetNamespace string,
