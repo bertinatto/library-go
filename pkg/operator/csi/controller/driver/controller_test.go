@@ -31,11 +31,20 @@ import (
 )
 
 const (
+	controllerName   = "TestCSIDriverController"
 	operandName      = "test-csi-driver"
 	operandNamespace = "openshift-test-csi-driver"
 
 	// From github.com/openshift/library-go/pkg/operator/resource/resourceapply/apps.go
 	specHashAnnotation = "operator.openshift.io/spec-hash"
+)
+
+var (
+	conditionAvailable        = controllerName + opv1.OperatorStatusTypeAvailable
+	conditionDegraded         = controllerName + opv1.OperatorStatusTypeDegraded
+	conditionProgressing      = controllerName + opv1.OperatorStatusTypeProgressing
+	conditionUpgradeable      = controllerName + opv1.OperatorStatusTypeUpgradeable
+	conditionPrereqsSatisfied = controllerName + opv1.OperatorStatusTypePrereqsSatisfied
 )
 
 type testCase struct {
@@ -103,7 +112,7 @@ func newOperator(test testCase, t *testing.T) *testContext {
 	// fakeDriverInstance also fulfils the OperatorClient interface
 	fakeOperatorClient := test.initialObjects.driver
 	op := New(
-		"TestCSIDriverController",
+		controllerName,
 		operandName,
 		operandNamespace,
 		fakeOperatorClient,
@@ -436,8 +445,8 @@ func TestSync(t *testing.T) {
 				driver: makeFakeDriverInstance(
 					withStatus(replica0),
 					withGenerations(1, 1, 1),
-					withTrueConditions(opv1.OperatorStatusTypeUpgradeable, opv1.OperatorStatusTypePrereqsSatisfied, opv1.OperatorStatusTypeProgressing),
-					withFalseConditions(opv1.OperatorStatusTypeDegraded, opv1.OperatorStatusTypeAvailable)),
+					withTrueConditions(conditionUpgradeable, conditionPrereqsSatisfied, conditionProgressing),
+					withFalseConditions(conditionDegraded, conditionAvailable)),
 			},
 		},
 		{
@@ -467,8 +476,8 @@ func TestSync(t *testing.T) {
 				driver: makeFakeDriverInstance(
 					withStatus(replica2), // 1 deployment + 1 daemonSet
 					withGenerations(1, 1, 1),
-					withTrueConditions(opv1.OperatorStatusTypeAvailable, opv1.OperatorStatusTypeUpgradeable, opv1.OperatorStatusTypePrereqsSatisfied),
-					withFalseConditions(opv1.OperatorStatusTypeDegraded, opv1.OperatorStatusTypeProgressing)),
+					withTrueConditions(conditionAvailable, conditionUpgradeable, conditionPrereqsSatisfied),
+					withFalseConditions(conditionDegraded, conditionProgressing)),
 			},
 		},
 		{
@@ -496,8 +505,8 @@ func TestSync(t *testing.T) {
 				driver: makeFakeDriverInstance(
 					withStatus(replica2),     // 1 deployment + 1 daemonSet
 					withGenerations(3, 3, 1), // now the operator knows generation 1
-					withTrueConditions(opv1.OperatorStatusTypeAvailable, opv1.OperatorStatusTypeUpgradeable, opv1.OperatorStatusTypePrereqsSatisfied, opv1.OperatorStatusTypeProgressing), // Progressing due to Generation change
-					withFalseConditions(opv1.OperatorStatusTypeDegraded)),
+					withTrueConditions(conditionAvailable, conditionUpgradeable, conditionPrereqsSatisfied, conditionProgressing), // Progressing due to Generation change
+					withFalseConditions(conditionDegraded)),
 			},
 		},
 		{
@@ -515,8 +524,8 @@ func TestSync(t *testing.T) {
 					withStatus(replica1),
 					withGenerations(1, 1, 1),
 					withGeneration(1, 1),
-					withTrueConditions(opv1.OperatorStatusTypeAvailable, opv1.OperatorStatusTypeUpgradeable, opv1.OperatorStatusTypePrereqsSatisfied),
-					withFalseConditions(opv1.OperatorStatusTypeDegraded, opv1.OperatorStatusTypeProgressing)),
+					withTrueConditions(conditionAvailable, conditionUpgradeable, conditionPrereqsSatisfied),
+					withFalseConditions(conditionDegraded, conditionProgressing)),
 			},
 			expectedObjects: testObjects{
 				deployment: getDeployment(argsLevel2, defaultImages(),
@@ -529,8 +538,8 @@ func TestSync(t *testing.T) {
 					withStatus(replica1), // 0 deployments + 1 daemonSet
 					withGenerations(1, 1, 1),
 					withGeneration(1, 1),
-					withTrueConditions(opv1.OperatorStatusTypeUpgradeable, opv1.OperatorStatusTypePrereqsSatisfied, opv1.OperatorStatusTypeProgressing), // The operator is Progressing
-					withFalseConditions(opv1.OperatorStatusTypeDegraded, opv1.OperatorStatusTypeAvailable)),                                             // The operator is not Available (controller not running...)
+					withTrueConditions(conditionUpgradeable, conditionPrereqsSatisfied, conditionProgressing), // The operator is Progressing
+					withFalseConditions(conditionDegraded, conditionAvailable)),                               // The operator is not Available (controller not running...)
 			},
 		},
 		{
@@ -548,8 +557,8 @@ func TestSync(t *testing.T) {
 					withStatus(replica1),
 					withGenerations(1, 1, 1),
 					withGeneration(1, 1),
-					withTrueConditions(opv1.OperatorStatusTypeAvailable, opv1.OperatorStatusTypeUpgradeable, opv1.OperatorStatusTypePrereqsSatisfied),
-					withFalseConditions(opv1.OperatorStatusTypeDegraded, opv1.OperatorStatusTypeProgressing)),
+					withTrueConditions(conditionAvailable, conditionUpgradeable, conditionPrereqsSatisfied),
+					withFalseConditions(conditionDegraded, conditionProgressing)),
 			},
 			expectedObjects: testObjects{
 				deployment: getDeployment(argsLevel2, defaultImages(),
@@ -562,8 +571,8 @@ func TestSync(t *testing.T) {
 					withStatus(replica1), // 0 deployments + 1 daemonSet
 					withGenerations(1, 1, 1),
 					withGeneration(1, 1),
-					withTrueConditions(opv1.OperatorStatusTypeUpgradeable, opv1.OperatorStatusTypePrereqsSatisfied, opv1.OperatorStatusTypeAvailable, opv1.OperatorStatusTypeProgressing), // The operator is Progressing, but still Available
-					withFalseConditions(opv1.OperatorStatusTypeDegraded)),
+					withTrueConditions(conditionUpgradeable, conditionPrereqsSatisfied, conditionAvailable, conditionProgressing), // The operator is Progressing, but still Available
+					withFalseConditions(conditionDegraded)),
 			},
 		},
 		{
@@ -594,8 +603,8 @@ func TestSync(t *testing.T) {
 					withLogLevel(opv1.Trace),
 					withGenerations(2, 2, 1),
 					withGeneration(2, 2),
-					withTrueConditions(opv1.OperatorStatusTypeAvailable, opv1.OperatorStatusTypeUpgradeable, opv1.OperatorStatusTypePrereqsSatisfied, opv1.OperatorStatusTypeProgressing), // Progressing due to Generation change
-					withFalseConditions(opv1.OperatorStatusTypeDegraded)),
+					withTrueConditions(conditionAvailable, conditionUpgradeable, conditionPrereqsSatisfied, conditionProgressing), // Progressing due to Generation change
+					withFalseConditions(conditionDegraded)),
 			},
 		},
 		{
@@ -612,8 +621,8 @@ func TestSync(t *testing.T) {
 				driver: makeFakeDriverInstance(
 					withStatus(replica2), // 1 deployment + 1 daemonSet
 					withGenerations(1, 1, 1),
-					withTrueConditions(opv1.OperatorStatusTypeAvailable, opv1.OperatorStatusTypeUpgradeable, opv1.OperatorStatusTypePrereqsSatisfied),
-					withFalseConditions(opv1.OperatorStatusTypeDegraded, opv1.OperatorStatusTypeProgressing)),
+					withTrueConditions(conditionAvailable, conditionUpgradeable, conditionPrereqsSatisfied),
+					withFalseConditions(conditionDegraded, conditionProgressing)),
 			},
 			expectedObjects: testObjects{
 				deployment: getDeployment(argsLevel2, defaultImages(),
@@ -625,8 +634,8 @@ func TestSync(t *testing.T) {
 				driver: makeFakeDriverInstance(
 					withStatus(replica2), // 1 deployment + 1 daemonSet
 					withGenerations(2, 2, 1),
-					withTrueConditions(opv1.OperatorStatusTypeAvailable, opv1.OperatorStatusTypeUpgradeable, opv1.OperatorStatusTypePrereqsSatisfied, opv1.OperatorStatusTypeProgressing),
-					withFalseConditions(opv1.OperatorStatusTypeDegraded)),
+					withTrueConditions(conditionAvailable, conditionUpgradeable, conditionPrereqsSatisfied, conditionProgressing),
+					withFalseConditions(conditionDegraded)),
 			},
 		},
 	}

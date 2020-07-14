@@ -240,7 +240,7 @@ func (c *Controller) updateSyncError(status *opv1.OperatorStatus, err error) {
 		// Operator is Degraded: could not finish what it was doing
 		v1helpers.SetOperatorCondition(&status.Conditions,
 			opv1.OperatorCondition{
-				Type:    opv1.OperatorStatusTypeDegraded,
+				Type:    fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypeDegraded),
 				Status:  opv1.ConditionTrue,
 				Reason:  "OperatorSync",
 				Message: err.Error(),
@@ -252,7 +252,7 @@ func (c *Controller) updateSyncError(status *opv1.OperatorStatus, err error) {
 		if cnd == nil || cnd.Status == opv1.ConditionFalse {
 			v1helpers.SetOperatorCondition(&status.Conditions,
 				opv1.OperatorCondition{
-					Type:    opv1.OperatorStatusTypeProgressing,
+					Type:    fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypeProgressing),
 					Status:  opv1.ConditionTrue,
 					Reason:  "OperatorSync",
 					Message: err.Error(),
@@ -261,7 +261,7 @@ func (c *Controller) updateSyncError(status *opv1.OperatorStatus, err error) {
 	} else {
 		v1helpers.SetOperatorCondition(&status.Conditions,
 			opv1.OperatorCondition{
-				Type:   opv1.OperatorStatusTypeDegraded,
+				Type:   fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypeDegraded),
 				Status: opv1.ConditionFalse,
 			})
 		// Progressing condition was set in c.handleSync().

@@ -90,21 +90,21 @@ func (c *Controller) syncStatus(
 	// The operator does not have any prerequisites (at least now)
 	v1helpers.SetOperatorCondition(&status.Conditions,
 		opv1.OperatorCondition{
-			Type:   opv1.OperatorStatusTypePrereqsSatisfied,
+			Type:   fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypePrereqsSatisfied),
 			Status: opv1.ConditionTrue,
 		})
 
 	// The operator is always upgradeable (at least now)
 	v1helpers.SetOperatorCondition(&status.Conditions,
 		opv1.OperatorCondition{
-			Type:   opv1.OperatorStatusTypeUpgradeable,
+			Type:   fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypeUpgradeable),
 			Status: opv1.ConditionTrue,
 		})
 
 	// The operator is avaiable for now
 	v1helpers.SetOperatorCondition(&status.Conditions,
 		opv1.OperatorCondition{
-			Type:   opv1.OperatorStatusTypeAvailable,
+			Type:   fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypeAvailable),
 			Status: opv1.ConditionTrue,
 		})
 
@@ -112,7 +112,7 @@ func (c *Controller) syncStatus(
 	if !isDaemonSetAvailable(daemonSet) {
 		v1helpers.SetOperatorCondition(&status.Conditions,
 			opv1.OperatorCondition{
-				Type:    opv1.OperatorStatusTypeAvailable,
+				Type:    fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypeAvailable),
 				Status:  opv1.ConditionFalse,
 				Message: "Waiting for the DaemonSet to deploy the CSI Node Service",
 				Reason:  "AsExpected",
@@ -124,7 +124,7 @@ func (c *Controller) syncStatus(
 		if !isDeploymentAvailable(deployment) {
 			v1helpers.SetOperatorCondition(&status.Conditions,
 				opv1.OperatorCondition{
-					Type:    opv1.OperatorStatusTypeAvailable,
+					Type:    fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypeAvailable),
 					Status:  opv1.ConditionFalse,
 					Message: "Waiting for Deployment to deploy the CSI Controller Service",
 					Reason:  "AsExpected",
@@ -135,7 +135,7 @@ func (c *Controller) syncStatus(
 	// The operator is not progressing for now
 	v1helpers.SetOperatorCondition(&status.Conditions,
 		opv1.OperatorCondition{
-			Type:   opv1.OperatorStatusTypeProgressing,
+			Type:   fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypeProgressing),
 			Status: opv1.ConditionFalse,
 			Reason: "AsExpected",
 		})
@@ -144,7 +144,7 @@ func (c *Controller) syncStatus(
 	if isProgressing {
 		v1helpers.SetOperatorCondition(&status.Conditions,
 			opv1.OperatorCondition{
-				Type:    opv1.OperatorStatusTypeProgressing,
+				Type:    fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypeProgressing),
 				Status:  opv1.ConditionTrue,
 				Message: msg,
 				Reason:  "AsExpected",
@@ -157,7 +157,7 @@ func (c *Controller) syncStatus(
 		if isProgressing {
 			v1helpers.SetOperatorCondition(&status.Conditions,
 				opv1.OperatorCondition{
-					Type:    opv1.OperatorStatusTypeProgressing,
+					Type:    fmt.Sprintf("%s%s", c.name, opv1.OperatorStatusTypeProgressing),
 					Status:  opv1.ConditionTrue,
 					Message: msg,
 					Reason:  "AsExpected",
