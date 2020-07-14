@@ -85,12 +85,14 @@ type Controller struct {
 	informersSynced []cache.InformerSynced
 
 	// CSI driver
-	csiDriverName      string
-	csiDriverNamespace string
-	assetFunc          func(string) []byte
-	controllerManifest []byte
-	nodeManifest       []byte
-	images             images
+	csiDriverName         string
+	csiDriverNamespace    string
+	assetFunc             func(string) []byte
+	controllerManifest    []byte
+	controllerServiceHook func(*appsv1.Deployment)
+	nodeManifest          []byte
+	nodeServiceHook       func(*appsv1.DaemonSet)
+	images                images
 
 	// Resources
 	kubeClient     kubernetes.Interface
@@ -136,18 +138,28 @@ func New(
 }
 
 // WithControllerService returns a Controller with the CSI Controller Service.
-func (c *Controller) WithControllerService(informer appsinformersv1.DeploymentInformer, file string) *Controller {
+func (c *Controller) WithControllerService(
+	informer appsinformersv1.DeploymentInformer,
+	file string,
+	modifiers ...func(*appsv1.Deployment),
+) *Controller {
 	informer.Informer().AddEventHandler(c.eventHandler("deployment"))
 	c.informersSynced = append(c.informersSynced, informer.Informer().HasSynced)
 	c.controllerManifest = c.assetFunc(file)
+	c.controllerServiceModifiers = modifiers
 	return c
 }
 
 // WithNodeService returns a Controller with the CSI Node Service.
-func (c *Controller) WithNodeService(informer appsinformersv1.DaemonSetInformer, file string) *Controller {
+func (c *Controller) WithNodeService(
+	informer appsinformersv1.DaemonSetInformer,
+	file string,
+	modifiers ...func(*appsv1.DaemonSet),
+) *Controller {
 	informer.Informer().AddEventHandler(c.eventHandler("daemonSet"))
 	c.informersSynced = append(c.informersSynced, informer.Informer().HasSynced)
 	c.nodeManifest = c.assetFunc(file)
+	c.nodeServiceModifiers = modifiers
 	return c
 }
 
@@ -280,7 +292,7 @@ func (c *Controller) handleSync(resourceVersion string, meta *metav1.ObjectMeta,
 
 	var nodeService *appsv1.DaemonSet
 	if c.nodeManifest != nil {
-		n, err := c.syncDaemonSet(spec, status)
+		n, err := c.syncDaemonSet(spec, status, c.nodeServiceHook)
 		if err != nil {
 			return fmt.Errorf("failed to sync DaemonSet: %v", err)
 		}

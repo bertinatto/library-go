@@ -40,7 +40,11 @@ func (c *Controller) syncDeployment(spec *opv1.OperatorSpec, status *opv1.Operat
 	return deploy, nil
 }
 
-func (c *Controller) syncDaemonSet(spec *opv1.OperatorSpec, status *opv1.OperatorStatus) (*appsv1.DaemonSet, error) {
+func (c *Controller) syncDaemonSet(
+	spec *opv1.OperatorSpec,
+	status *opv1.OperatorStatus,
+	modifier func(*appsv1.DaemonSet),
+) (*appsv1.DaemonSet, error) {
 	daemonSet := c.getExpectedDaemonSet(spec)
 
 	daemonSet, _, err := resourceapply.ApplyDaemonSet(
@@ -51,7 +55,7 @@ func (c *Controller) syncDaemonSet(spec *opv1.OperatorSpec, status *opv1.Operato
 	if err != nil {
 		return nil, err
 	}
-
+	modifier(daemonSet)
 	return daemonSet, nil
 }
 
