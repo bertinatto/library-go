@@ -22,7 +22,15 @@ import (
 
 const globalConfigName = "cluster"
 
-func NewClusterScopedOperatorClient(config *rest.Config, gvr schema.GroupVersionResource) (v1helpers.OperatorClient, dynamicinformer.DynamicSharedInformerFactory, error) {
+type ClusterScopedOperatorClientOption func(*dynamicOperatorClient)
+
+func WithConfigName(name string) ClusterScopedOperatorClientOption {
+	return func(c *dynamicOperatorClient) {
+		c.configName = name
+	}
+}
+
+func NewClusterScopedOperatorClient(config *rest.Config, gvr schema.GroupVersionResource, options ...ClusterScopedOperatorClientOption) (v1helpers.OperatorClient, dynamicinformer.DynamicSharedInformerFactory, error) {
 	dynamicClient, err := dynamic.NewForConfig(config)
 	if err != nil {
 		return nil, nil, err
@@ -32,15 +40,23 @@ func NewClusterScopedOperatorClient(config *rest.Config, gvr schema.GroupVersion
 	informers := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 12*time.Hour)
 	informer := informers.ForResource(gvr)
 
-	return &dynamicOperatorClient{
-		informer: informer,
-		client:   client,
-	}, informers, nil
+	d := &dynamicOperatorClient{
+		configName: globalConfigName,
+		informer:   informer,
+		client:     client,
+	}
+
+	for _, setter := range options {
+		setter(d)
+	}
+
+	return d, informers, nil
 }
 
 type dynamicOperatorClient struct {
-	informer informers.GenericInformer
-	client   dynamic.ResourceInterface
+	configName string
+	informer   informers.GenericInformer
+	client     dynamic.ResourceInterface
 }
 
 func (c dynamicOperatorClient) Informer() cache.SharedIndexInformer {
@@ -48,7 +64,7 @@ func (c dynamicOperatorClient) Informer() cache.SharedIndexInformer {
 }
 
 func (c dynamicOperatorClient) GetObjectMeta() (*metav1.ObjectMeta, error) {
-	uncastInstance, err := c.informer.Lister().Get(globalConfigName)
+	uncastInstance, err := c.informer.Lister().Get(c.configName)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +73,7 @@ func (c dynamicOperatorClient) GetObjectMeta() (*metav1.ObjectMeta, error) {
 }
 
 func (c dynamicOperatorClient) GetOperatorState() (*operatorv1.OperatorSpec, *operatorv1.OperatorStatus, string, error) {
-	uncastInstance, err := c.informer.Lister().Get(globalConfigName)
+	uncastInstance, err := c.informer.Lister().Get(c.configName)
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -79,7 +95,7 @@ func (c dynamicOperatorClient) GetOperatorState() (*operatorv1.OperatorSpec, *op
 // in operatorv1.OperatorSpec while preserving pre-existing spec fields that have
 // no correspondence in operatorv1.OperatorSpec.
 func (c dynamicOperatorClient) UpdateOperatorSpec(resourceVersion string, spec *operatorv1.OperatorSpec) (*operatorv1.OperatorSpec, string, error) {
-	uncastOriginal, err := c.informer.Lister().Get(globalConfigName)
+	uncastOriginal, err := c.informer.Lister().Get(c.configName)
 	if err != nil {
 		return nil, "", err
 	}
@@ -107,7 +123,7 @@ func (c dynamicOperatorClient) UpdateOperatorSpec(resourceVersion string, spec *
 // in operatorv1.OperatorStatus while preserving pre-existing status fields that have
 // no correspondence in operatorv1.OperatorStatus.
 func (c dynamicOperatorClient) UpdateOperatorStatus(resourceVersion string, status *operatorv1.OperatorStatus) (*operatorv1.OperatorStatus, error) {
-	uncastOriginal, err := c.informer.Lister().Get(globalConfigName)
+	uncastOriginal, err := c.informer.Lister().Get(c.configName)
 	if err != nil {
 		return nil, err
 	}

@@ -29,7 +29,7 @@ func NewStaticPodOperatorClient(config *rest.Config, gvr schema.GroupVersionReso
 	informer := informers.ForResource(gvr)
 
 	return &dynamicStaticPodOperatorClient{
-		dynamicOperatorClient: dynamicOperatorClient{
+		DynamicOperatorClient: DynamicOperatorClient{
 			informer: informer,
 			client:   client,
 		},
@@ -37,7 +37,7 @@ func NewStaticPodOperatorClient(config *rest.Config, gvr schema.GroupVersionReso
 }
 
 type dynamicStaticPodOperatorClient struct {
-	dynamicOperatorClient
+	DynamicOperatorClient
 }
 
 func (c dynamicStaticPodOperatorClient) GetStaticPodOperatorState() (*operatorv1.StaticPodOperatorSpec, *operatorv1.StaticPodOperatorStatus, string, error) {

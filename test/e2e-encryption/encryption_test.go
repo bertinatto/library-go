@@ -43,6 +43,8 @@ import (
 	"github.com/openshift/library-go/test/library"
 )
 
+const configName = "cluster"
+
 func TestEncryptionIntegration(tt *testing.T) {
 	// in terminal print logs immediately
 	var t T = tt
