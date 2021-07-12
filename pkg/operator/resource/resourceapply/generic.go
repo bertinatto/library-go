@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	admissionv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -38,8 +39,9 @@ func init() {
 	utilruntime.Must(apiextensionsv1beta1.AddToScheme(genericScheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(genericScheme))
 	utilruntime.Must(migrationv1alpha1.AddToScheme(genericScheme))
-	// TODO: remove once openshift/api/pull/929 is merged
 	utilruntime.Must(policyv1.AddToScheme(genericScheme))
+	// TODO: create PR for openshift/api
+	utilruntime.Must(admissionv1.AddToScheme(genericScheme))
 }
 
 type AssetFunc func(name string) ([]byte, error)
@@ -152,6 +154,12 @@ func ApplyDirectly(ctx context.Context, clients *ClientHolder, recorder events.R
 				result.Error = fmt.Errorf("missing kubeClient")
 			} else {
 				result.Result, result.Changed, result.Error = ApplySecret(ctx, client, recorder, t)
+			}
+		case *admissionv1.ValidatingWebhookConfiguration:
+			if clients.kubeClient == nil {
+				result.Error = fmt.Errorf("missing kubeClient")
+			} else {
+				result.Result, result.Changed, result.Error = ApplyValidatingWebhookConfiguration(ctx, clients.kubeClient.AdmissionregistrationV1(), recorder, t, -1 /* expectedGeneration */)
 			}
 		case *rbacv1.ClusterRole:
 			if clients.kubeClient == nil {

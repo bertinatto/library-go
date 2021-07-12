@@ -83,6 +83,7 @@ func copyMutatingWebhookCABundle(from, to *admissionregistrationv1.MutatingWebho
 // validatingwebhookconfiguration will be merged with the existing validatingwebhookconfiguration
 // and an update performed if the validatingwebhookconfiguration spec and metadata differ from
 // the previously required spec and metadata based on generation change.
+// Disregard expectedGeneration when it's negative. In that case, only take into account metadata changes.
 func ApplyValidatingWebhookConfiguration(ctx context.Context, client admissionregistrationclientv1.ValidatingWebhookConfigurationsGetter, recorder events.Recorder,
 	requiredOriginal *admissionregistrationv1.ValidatingWebhookConfiguration, expectedGeneration int64) (*admissionregistrationv1.ValidatingWebhookConfiguration, bool, error) {
 	if requiredOriginal == nil {
@@ -109,6 +110,11 @@ func ApplyValidatingWebhookConfiguration(ctx context.Context, client admissionre
 	if !*modified && existingCopy.GetGeneration() == expectedGeneration {
 		return existingCopy, false, nil
 	}
+
+	if !*modified && expectedGeneration < 0 {
+		return existingCopy, false, nil
+	}
+
 	// at this point we know that we're going to perform a write.  We're just trying to get the object correct
 	toWrite := existingCopy // shallow copy so the code reads easier
 	copyValidatingWebhookCABundle(existing, required)

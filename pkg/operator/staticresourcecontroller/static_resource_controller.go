@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/restmapper"
 
+	admissionv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -154,6 +155,8 @@ func (c *StaticResourceController) AddKubeInformers(kubeInformersByNamespace v1h
 			ret = ret.AddInformer(informer.Core().V1().ConfigMaps().Informer())
 		case *corev1.Secret:
 			ret = ret.AddInformer(informer.Core().V1().Secrets().Informer())
+		case *admissionv1.ValidatingWebhookConfiguration:
+			ret = ret.AddInformer(informer.Admissionregistration().V1().MutatingWebhookConfigurations().Informer())
 		case *rbacv1.ClusterRole:
 			ret = ret.AddInformer(informer.Rbac().V1().ClusterRoles().Informer())
 		case *rbacv1.ClusterRoleBinding:
