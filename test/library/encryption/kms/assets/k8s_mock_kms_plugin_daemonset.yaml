@@ -151,6 +151,106 @@ spec:
               subPath: softhsm-config.json
             - name: softhsm-tokens
               mountPath: /var/lib/softhsm/tokens
+        - name: kms-plugin-6
+          image: {{ .Image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              rm -f /var/run/kmsplugin/kms-6.sock
+              exec /usr/local/bin/mock-kms-plugin -listen-addr=unix:///var/run/kmsplugin/kms-6.sock -config-file-path=/etc/softhsm-config.json
+          volumeMounts:
+            - name: socket
+              mountPath: /var/run/kmsplugin
+            - name: softhsm-config
+              mountPath: /etc/softhsm-config.json
+              subPath: softhsm-config.json
+            - name: softhsm-tokens
+              mountPath: /var/lib/softhsm/tokens
+        - name: kms-plugin-7
+          image: {{ .Image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              rm -f /var/run/kmsplugin/kms-7.sock
+              exec /usr/local/bin/mock-kms-plugin -listen-addr=unix:///var/run/kmsplugin/kms-7.sock -config-file-path=/etc/softhsm-config.json
+          volumeMounts:
+            - name: socket
+              mountPath: /var/run/kmsplugin
+            - name: softhsm-config
+              mountPath: /etc/softhsm-config.json
+              subPath: softhsm-config.json
+            - name: softhsm-tokens
+              mountPath: /var/lib/softhsm/tokens
+        - name: kms-plugin-8
+          image: {{ .Image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              rm -f /var/run/kmsplugin/kms-8.sock
+              exec /usr/local/bin/mock-kms-plugin -listen-addr=unix:///var/run/kmsplugin/kms-8.sock -config-file-path=/etc/softhsm-config.json
+          volumeMounts:
+            - name: socket
+              mountPath: /var/run/kmsplugin
+            - name: softhsm-config
+              mountPath: /etc/softhsm-config.json
+              subPath: softhsm-config.json
+            - name: softhsm-tokens
+              mountPath: /var/lib/softhsm/tokens
+        - name: kms-plugin-9
+          image: {{ .Image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              rm -f /var/run/kmsplugin/kms-9.sock
+              exec /usr/local/bin/mock-kms-plugin -listen-addr=unix:///var/run/kmsplugin/kms-9.sock -config-file-path=/etc/softhsm-config.json
+          volumeMounts:
+            - name: socket
+              mountPath: /var/run/kmsplugin
+            - name: softhsm-config
+              mountPath: /etc/softhsm-config.json
+              subPath: softhsm-config.json
+            - name: softhsm-tokens
+              mountPath: /var/lib/softhsm/tokens
+        - name: kms-plugin-10
+          image: {{ .Image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              rm -f /var/run/kmsplugin/kms-10.sock
+              exec /usr/local/bin/mock-kms-plugin -listen-addr=unix:///var/run/kmsplugin/kms-10.sock -config-file-path=/etc/softhsm-config.json
+          volumeMounts:
+            - name: socket
+              mountPath: /var/run/kmsplugin
+            - name: softhsm-config
+              mountPath: /etc/softhsm-config.json
+              subPath: softhsm-config.json
+            - name: softhsm-tokens
+              mountPath: /var/lib/softhsm/tokens
       volumes:
         - name: socket
           hostPath:
