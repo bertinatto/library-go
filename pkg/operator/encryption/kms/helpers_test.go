@@ -254,6 +254,107 @@ func TestParseProviderConfig(t *testing.T) {
 	}
 }
 
+func TestToCredentialSecretDataKeyFor(t *testing.T) {
+	tests := []struct {
+		name      string
+		keyID     string
+		wantKey   string
+		wantError bool
+	}{
+		{
+			name:    "valid",
+			keyID:   "1",
+			wantKey: "kms-secret-data-1",
+		},
+		{
+			name:    "valid large keyID",
+			keyID:   "42",
+			wantKey: "kms-secret-data-42",
+		},
+		{
+			name:      "non-integer keyID",
+			keyID:     "abc",
+			wantError: true,
+		},
+		{
+			name:      "empty keyID",
+			keyID:     "",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ToCredentialSecretDataKeyFor(tt.keyID)
+			if tt.wantError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantKey, got)
+		})
+	}
+}
+
+func TestKeyIDFromCredentialSecretDataKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		dataKey   string
+		wantKeyID string
+		wantFound bool
+		wantError bool
+	}{
+		{
+			name:      "valid",
+			dataKey:   "kms-secret-data-1",
+			wantKeyID: "1",
+			wantFound: true,
+		},
+		{
+			name:      "valid large keyID",
+			dataKey:   "kms-secret-data-42",
+			wantKeyID: "42",
+			wantFound: true,
+		},
+		{
+			name:    "non-matching prefix",
+			dataKey: "encryption-config",
+		},
+		{
+			name:    "provider config key",
+			dataKey: "kms-provider-config-1",
+		},
+		{
+			name:    "empty string",
+			dataKey: "",
+		},
+		{
+			name:      "non-integer keyID",
+			dataKey:   "kms-secret-data-abc",
+			wantError: true,
+		},
+		{
+			name:    "missing keyID",
+			dataKey: "kms-secret-data-",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			keyID, found, err := KeyIDFromCredentialSecretDataKey(tt.dataKey)
+			if tt.wantError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantFound, found)
+			if found {
+				require.Equal(t, tt.wantKeyID, keyID)
+			}
+		})
+	}
+}
+
 func TestAddKMSPluginVolume(t *testing.T) {
 	directoryOrCreate := corev1.HostPathDirectoryOrCreate
 
