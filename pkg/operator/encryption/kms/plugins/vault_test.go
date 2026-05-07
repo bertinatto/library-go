@@ -6,8 +6,6 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiserverv1 "k8s.io/apiserver/pkg/apis/apiserver/v1"
 )
 
@@ -15,26 +13,20 @@ func TestVaultSidecarProvider_BuildSidecarContainer(t *testing.T) {
 	tests := []struct {
 		name          string
 		vaultConfig   *configv1.VaultKMSConfig
-		credentials   *corev1.Secret
+		roleID        string
 		containerName string
 		kmsConfig     *apiserverv1.KMSConfiguration
 		wantErr       string
 	}{
 		{
-			name: "builds container with correct args",
+			name:   "builds container with correct args",
+			roleID: "test-role-id",
 			vaultConfig: &configv1.VaultKMSConfig{
 				KMSPluginImage: "quay.io/test/vault:v2",
 				VaultAddress:   "https://vault.example.com:8200",
 				VaultNamespace: "my-namespace",
 				TransitKey:     "my-key",
 				TransitMount:   "transit",
-			},
-			credentials: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "vault-kms-credentials"},
-				Data: map[string][]byte{
-					"VAULT_ROLE_ID":   []byte("test-role-id"),
-					"VAULT_SECRET_ID": []byte("test-secret-id"),
-				},
 			},
 			containerName: "kms-plugin",
 			kmsConfig: &apiserverv1.KMSConfiguration{
@@ -44,34 +36,45 @@ func TestVaultSidecarProvider_BuildSidecarContainer(t *testing.T) {
 			},
 		},
 		{
-			name:        "nil vault config",
-			vaultConfig: nil,
-			credentials: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "vault-kms-credentials"},
-				Data:       map[string][]byte{},
-			},
+			name:          "nil vault config",
+			roleID:        "test-role-id",
+			vaultConfig:   nil,
 			containerName: "kms-plugin",
 			kmsConfig:     &apiserverv1.KMSConfiguration{},
 			wantErr:       "vault config cannot be nil",
 		},
 		{
-			name: "nil credentials",
+			name: "empty role ID",
 			vaultConfig: &configv1.VaultKMSConfig{
 				KMSPluginImage: "quay.io/test/vault:v2",
 				VaultAddress:   "https://vault.example.com:8200",
 			},
-			credentials:   nil,
 			containerName: "kms-plugin",
-			kmsConfig:     &apiserverv1.KMSConfiguration{},
-			wantErr:       "vault credentials cannot be nil",
+			kmsConfig: &apiserverv1.KMSConfiguration{
+				Endpoint: "unix:///var/run/kmsplugin/kms-555.sock",
+			},
+			wantErr: "vault role ID cannot be empty",
+		},
+		{
+			name:   "invalid endpoint",
+			roleID: "test-role-id",
+			vaultConfig: &configv1.VaultKMSConfig{
+				KMSPluginImage: "quay.io/test/vault:v2",
+				VaultAddress:   "https://vault.example.com:8200",
+			},
+			containerName: "kms-plugin",
+			kmsConfig: &apiserverv1.KMSConfiguration{
+				Endpoint: "invalid-endpoint",
+			},
+			wantErr: "failed to parse key ID from endpoint",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := &VaultSidecarProvider{
-				Config:      tt.vaultConfig,
-				Credentials: tt.credentials,
+				Config: tt.vaultConfig,
+				RoleID: tt.roleID,
 			}
 
 			container, err := provider.BuildSidecarContainer(tt.containerName, tt.kmsConfig)
@@ -84,8 +87,9 @@ func TestVaultSidecarProvider_BuildSidecarContainer(t *testing.T) {
 			require.Equal(t, tt.vaultConfig.KMSPluginImage, container.Image)
 			require.Equal(t, []string{"/bin/sh", "-c"}, container.Command)
 
+			credentialsFile := "/etc/kubernetes/static-pod-resources/secrets/encryption-config/kms-secret-data-555"
 			expectedArgs := fmt.Sprintf(`
-	echo "%s" > /tmp/secret-id
+	sed -n 's/.*"VAULT_SECRET_ID":"\([^"]*\)".*/\1/p' %s > /tmp/secret-id
 	exec /vault-kube-kms \
 	-listen-address=%s \
 	-vault-address=%s \
@@ -94,13 +98,13 @@ func TestVaultSidecarProvider_BuildSidecarContainer(t *testing.T) {
 	-transit-key=%s \
 	-approle-role-id=%s \
 	-approle-secret-id-path=/tmp/secret-id`,
-				tt.credentials.Data["VAULT_SECRET_ID"],
+				credentialsFile,
 				tt.kmsConfig.Endpoint,
 				tt.vaultConfig.VaultAddress,
 				tt.vaultConfig.VaultNamespace,
 				tt.vaultConfig.TransitMount,
 				tt.vaultConfig.TransitKey,
-				tt.credentials.Data["VAULT_ROLE_ID"],
+				tt.roleID,
 			)
 			require.Len(t, container.Args, 1)
 			require.Equal(t, expectedArgs, container.Args[0])

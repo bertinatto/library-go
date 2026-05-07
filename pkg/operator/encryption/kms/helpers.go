@@ -1,6 +1,7 @@
 package kms
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -138,6 +139,30 @@ func parseProviderConfig(secret *corev1.Secret, kmsConfiguration *apiserverv1.KM
 		return nil, fmt.Errorf("failed to decode provider config: %w", err)
 	}
 	return kmsConfig, nil
+}
+
+func parseRoleID(secret *corev1.Secret, kmsConfiguration *apiserverv1.KMSConfiguration) (string, error) {
+	keyID, err := parseKeyIDFromEndpoint(kmsConfiguration.Endpoint)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse key ID from endpoint: %w", err)
+	}
+	dataKey, err := ToCredentialSecretDataKeyFor(keyID)
+	if err != nil {
+		return "", err
+	}
+	credentialsData, ok := secret.Data[dataKey]
+	if !ok || len(credentialsData) == 0 {
+		return "", fmt.Errorf("missing %s in encryption-config secret", dataKey)
+	}
+	credentials := map[string]string{}
+	if err := json.Unmarshal(credentialsData, &credentials); err != nil {
+		return "", fmt.Errorf("failed to decode credentials from %s: %w", dataKey, err)
+	}
+	roleID, ok := credentials["VAULT_ROLE_ID"]
+	if !ok || len(roleID) == 0 {
+		return "", fmt.Errorf("missing VAULT_ROLE_ID in credentials for keyID %s", keyID)
+	}
+	return roleID, nil
 }
 
 func parseKeyIDFromEndpoint(endpoint string) (string, error) {

@@ -1,6 +1,7 @@
 package kms
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -16,79 +17,35 @@ import (
 )
 
 func TestNewSidecarProvider(t *testing.T) {
-	credentials := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "vault-kms-credentials",
-			Namespace: "openshift-config",
-		},
-		Data: map[string][]byte{
-			"VAULT_ROLE_ID":   []byte("role-id"),
-			"VAULT_SECRET_ID": []byte("secret-id"),
-		},
-	}
-
-	secretLister := func(secrets ...*corev1.Secret) corev1listers.SecretLister {
-		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-		for _, s := range secrets {
-			indexer.Add(s)
-		}
-		return corev1listers.NewSecretLister(indexer)
-	}
-
 	tests := []struct {
 		name    string
 		config  *configv1.KMSConfig
-		lister  corev1listers.SecretLister
+		roleID  string
 		wantErr string
 	}{
 		{
-			name: "vault provider",
+			name:   "vault provider",
+			roleID: "test-role-id",
 			config: &configv1.KMSConfig{
 				Type: configv1.VaultKMSProvider,
 				Vault: configv1.VaultKMSConfig{
 					KMSPluginImage: "quay.io/test/vault:v1",
 					VaultAddress:   "https://vault.example.com:8200",
 					TransitKey:     "my-key",
-					Authentication: configv1.VaultAuthentication{
-						Type: configv1.VaultAuthenticationTypeAppRole,
-						AppRole: configv1.VaultAppRoleAuthentication{
-							Secret: configv1.VaultSecretReference{Name: "vault-kms-credentials"},
-						},
-					},
 				},
 			},
-			lister: secretLister(credentials),
-		},
-		{
-			name: "vault provider with missing secret",
-			config: &configv1.KMSConfig{
-				Type: configv1.VaultKMSProvider,
-				Vault: configv1.VaultKMSConfig{
-					KMSPluginImage: "quay.io/test/vault:v1",
-					VaultAddress:   "https://vault.example.com:8200",
-					TransitKey:     "my-key",
-					Authentication: configv1.VaultAuthentication{
-						Type: configv1.VaultAuthenticationTypeAppRole,
-						AppRole: configv1.VaultAppRoleAuthentication{
-							Secret: configv1.VaultSecretReference{Name: "missing-secret"},
-						},
-					},
-				},
-			},
-			lister:  secretLister(),
-			wantErr: "failed to get openshift-config/missing-secret secret",
 		},
 		{
 			name:    "unsupported provider",
+			roleID:  "test-role-id",
 			config:  &configv1.KMSConfig{},
-			lister:  secretLister(),
 			wantErr: "unsupported KMS provider configuration",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider, err := newSidecarProvider(tt.config, tt.lister)
+			provider, err := newSidecarProvider(tt.config, tt.roleID)
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				return
@@ -100,14 +57,6 @@ func TestNewSidecarProvider(t *testing.T) {
 }
 
 func TestAppendContainer(t *testing.T) {
-	credentials := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "vault-kms-credentials"},
-		Data: map[string][]byte{
-			"VAULT_ROLE_ID":   []byte("role-id"),
-			"VAULT_SECRET_ID": []byte("secret-id"),
-		},
-	}
-
 	kmsConfig := &apiserverv1.KMSConfiguration{
 		APIVersion: "v2",
 		Name:       "test",
@@ -144,7 +93,7 @@ func TestAppendContainer(t *testing.T) {
 					TransitKey:     "key",
 					TransitMount:   "transit",
 				},
-				Credentials: credentials,
+				RoleID: "test-role-id",
 			}
 
 			err := appendContainer(tt.podSpec, provider, "kms-plugin", kmsConfig)
@@ -191,6 +140,16 @@ func TestInjectIntoPodSpec(t *testing.T) {
 	providerConfigKey, err := ToProviderConfigSecretDataKeyFor("555")
 	require.NoError(t, err)
 
+	credentialsKey, err := ToCredentialSecretDataKeyFor("555")
+	require.NoError(t, err)
+
+	credentials := map[string]string{
+		"VAULT_ROLE_ID":   "role-id",
+		"VAULT_SECRET_ID": "secret-id",
+	}
+	credentialsBytes, err := json.Marshal(credentials)
+	require.NoError(t, err)
+
 	encryptionConfig := &apiserverv1.EncryptionConfiguration{
 		Resources: []apiserverv1.ResourceConfiguration{
 			{
@@ -218,22 +177,13 @@ func TestInjectIntoPodSpec(t *testing.T) {
 		Data: map[string][]byte{
 			"encryption-config": encryptionConfigBytes,
 			providerConfigKey:   providerConfigBytes,
+			credentialsKey:      credentialsBytes,
 		},
 	}
 
-	credentials := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "vault-kms-credentials",
-			Namespace: "openshift-config",
-		},
-		Data: map[string][]byte{
-			"VAULT_ROLE_ID":   []byte("role-id"),
-			"VAULT_SECRET_ID": []byte("secret-id"),
-		},
-	}
-
+	credentialsFile := "/etc/kubernetes/static-pod-resources/secrets/encryption-config/kms-secret-data-555"
 	sidecarArgs := fmt.Sprintf(`
-	echo "%s" > /tmp/secret-id
+	sed -n 's/.*"VAULT_SECRET_ID":"\([^"]*\)".*/\1/p' %s > /tmp/secret-id
 	exec /vault-kube-kms \
 	-listen-address=%s \
 	-vault-address=%s \
@@ -242,7 +192,7 @@ func TestInjectIntoPodSpec(t *testing.T) {
 	-transit-key=%s \
 	-approle-role-id=%s \
 	-approle-secret-id-path=/tmp/secret-id`,
-		"secret-id",
+		credentialsFile,
 		"unix:///var/run/kmsplugin/kms-555.sock",
 		"https://vault.example.com:8200",
 		"my-namespace",
@@ -259,6 +209,19 @@ func TestInjectIntoPodSpec(t *testing.T) {
 		Name: "kms-plugin-socket",
 		VolumeSource: corev1.VolumeSource{
 			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	}
+	resourceDirMount := corev1.VolumeMount{
+		Name:      "resource-dir",
+		MountPath: "/etc/kubernetes/static-pod-resources",
+		ReadOnly:  true,
+	}
+	resourceDirVolume := corev1.Volume{
+		Name: "resource-dir",
+		VolumeSource: corev1.VolumeSource{
+			HostPath: &corev1.HostPathVolumeSource{
+				Path: "/etc/kubernetes/static-pod-resources",
+			},
 		},
 	}
 
@@ -281,6 +244,7 @@ func TestInjectIntoPodSpec(t *testing.T) {
 				Containers: []corev1.Container{
 					{Name: "kube-apiserver"},
 				},
+				Volumes: []corev1.Volume{resourceDirVolume},
 			},
 			expectedPodSpec: &corev1.PodSpec{
 				Containers: []corev1.Container{
@@ -293,17 +257,17 @@ func TestInjectIntoPodSpec(t *testing.T) {
 						Image:        "quay.io/test/vault:v1",
 						Command:      []string{"/bin/sh", "-c"},
 						Args:         []string{sidecarArgs},
-						VolumeMounts: []corev1.VolumeMount{socketMount},
+						VolumeMounts: []corev1.VolumeMount{socketMount, resourceDirMount},
 					},
 				},
-				Volumes: []corev1.Volume{socketVolume},
+				Volumes: []corev1.Volume{resourceDirVolume, socketVolume},
 			},
-			lister: secretLister(encryptionConfigSecret, credentials),
+			lister: secretLister(encryptionConfigSecret),
 		},
 		{
 			name:          "nil pod spec",
 			actualPodSpec: nil,
-			lister:        secretLister(encryptionConfigSecret, credentials),
+			lister:        secretLister(encryptionConfigSecret),
 			wantErr:       "pod spec cannot be nil",
 		},
 		{
@@ -381,7 +345,7 @@ func TestInjectIntoPodSpec(t *testing.T) {
 					{Name: "other-container"},
 				},
 			},
-			lister:  secretLister(encryptionConfigSecret, credentials),
+			lister:  secretLister(encryptionConfigSecret),
 			wantErr: "container kube-apiserver not found",
 		},
 	}
