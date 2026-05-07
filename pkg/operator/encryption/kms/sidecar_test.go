@@ -183,7 +183,10 @@ func TestInjectIntoPodSpec(t *testing.T) {
 
 	credentialsFile := "/etc/kubernetes/static-pod-resources/secrets/encryption-config/kms-secret-data-555"
 	sidecarArgs := fmt.Sprintf(`
-	sed -n 's/.*"VAULT_SECRET_ID":"\([^"]*\)".*/\1/p' %s > /tmp/secret-id
+	CREDS=$(cat %s)
+	SECRET_ID=${CREDS#*\"VAULT_SECRET_ID\":\"}
+	SECRET_ID=${SECRET_ID%%%%\"*}
+	printf '%%s' "$SECRET_ID" > /tmp/secret-id
 	exec /vault-kube-kms \
 	-listen-address=%s \
 	-vault-address=%s \

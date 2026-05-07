@@ -35,7 +35,10 @@ func (v *VaultSidecarProvider) BuildSidecarContainer(name string, kmsConfig *api
 	credentialsFile := filepath.Join(credentialsDir, fmt.Sprintf("kms-secret-data-%s", keyID))
 
 	args := fmt.Sprintf(`
-	sed -n 's/.*"VAULT_SECRET_ID":"\([^"]*\)".*/\1/p' %s > /tmp/secret-id
+	CREDS=$(cat %s)
+	SECRET_ID=${CREDS#*\"VAULT_SECRET_ID\":\"}
+	SECRET_ID=${SECRET_ID%%%%\"*}
+	printf '%%s' "$SECRET_ID" > /tmp/secret-id
 	exec /vault-kube-kms \
 	-listen-address=%s \
 	-vault-address=%s \
