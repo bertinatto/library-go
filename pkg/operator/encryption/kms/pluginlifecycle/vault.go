@@ -66,6 +66,10 @@ func (v *vault) BuildSidecarContainer() (corev1.Container, error) {
 		args = append(args, fmt.Sprintf("-vault-namespace=%s", v.config.VaultNamespace))
 	}
 
+	// TODO(bertinatto): this is a temporary workaround until the ca bundle is wired into the
+	// encryption config secret. This should be removed before shipping the TechPreview version
+	args = append(args, "-tls-skip-verify")
+
 	return corev1.Container{
 		Name:            v.Name(),
 		Image:           v.config.KMSPluginImage,
