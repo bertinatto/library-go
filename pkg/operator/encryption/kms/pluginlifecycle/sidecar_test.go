@@ -42,7 +42,7 @@ func newSidecarTestFixtures(t *testing.T) sidecarTestFixtures {
 			Authentication: configv1.VaultAuthentication{
 				Type: configv1.VaultAuthenticationTypeAppRole,
 				AppRole: configv1.VaultAppRoleAuthentication{
-					Secret: configv1.VaultSecretReference{Name: "vault-kms-credentials"},
+					Secret: configv1.VaultSecretReference{Name: "vault-approle"},
 				},
 			},
 		},
@@ -78,6 +78,8 @@ func newSidecarTestFixtures(t *testing.T) sidecarTestFixtures {
 		Data: map[string][]byte{
 			"encryption-config": encryptionConfigBytes,
 			pluginConfigKey:     pluginConfigBytes,
+			"kms-plugin-secret-vault-approle_role-id-555":   []byte("test-role-id"),
+			"kms-plugin-secret-vault-approle_secret-id-555": []byte("test-secret-id"),
 		},
 	}
 
@@ -111,8 +113,8 @@ func TestAddKMSPluginSidecarToPodSpec(t *testing.T) {
 		"-vault-address=https://vault.example.com:8200",
 		"-transit-mount=transit",
 		"-transit-key=my-key",
-		"-approle-role-id=dummy-role-id-555",
-		"-approle-secret-id-path=/var/run/secrets/vault-kms/secret-id-555",
+		"-approle-role-id=test-role-id",
+		"-approle-secret-id-path=/var/run/secrets/kms-plugin/kms-plugin-secret-vault-approle_secret-id-555",
 		"-vault-namespace=my-namespace",
 		"-tls-skip-verify",
 	}
@@ -209,8 +211,8 @@ func TestAddKMSPluginSidecarToPodSpec(t *testing.T) {
 							"-vault-address=https://vault2.example.com:8200",
 							"-transit-mount=transit2",
 							"-transit-key=other-key",
-							"-approle-role-id=dummy-role-id-777",
-							"-approle-secret-id-path=/var/run/secrets/vault-kms/secret-id-777",
+							"-approle-role-id=test-role-id-777",
+							"-approle-secret-id-path=/var/run/secrets/kms-plugin/kms-plugin-secret-vault-approle-2_secret-id-777",
 							"-vault-namespace=other-namespace",
 							"-tls-skip-verify",
 						},
@@ -233,8 +235,8 @@ func TestAddKMSPluginSidecarToPodSpec(t *testing.T) {
 							"-vault-address=https://vault.example.com:8200",
 							"-transit-mount=transit",
 							"-transit-key=my-key",
-							"-approle-role-id=dummy-role-id-555",
-							"-approle-secret-id-path=/var/run/secrets/vault-kms/secret-id-555",
+							"-approle-role-id=test-role-id",
+							"-approle-secret-id-path=/var/run/secrets/kms-plugin/kms-plugin-secret-vault-approle_secret-id-555",
 							"-vault-namespace=my-namespace",
 							"-tls-skip-verify",
 						},
@@ -261,6 +263,12 @@ func TestAddKMSPluginSidecarToPodSpec(t *testing.T) {
 						VaultNamespace: "other-namespace",
 						TransitKey:     "other-key",
 						TransitMount:   "transit2",
+						Authentication: configv1.VaultAuthentication{
+							Type: configv1.VaultAuthenticationTypeAppRole,
+							AppRole: configv1.VaultAppRoleAuthentication{
+								Secret: configv1.VaultSecretReference{Name: "vault-approle-2"},
+							},
+						},
 					},
 				}
 				pluginConfig2Bytes, err := encoding.EncodeKMSPluginConfig(*vaultConfig2)
@@ -303,6 +311,10 @@ func TestAddKMSPluginSidecarToPodSpec(t *testing.T) {
 						"encryption-config": multiEncConfigBytes,
 						f.pluginConfigKey:   f.pluginConfigBytes,
 						pluginConfigKey2:    pluginConfig2Bytes,
+						"kms-plugin-secret-vault-approle_role-id-555":     []byte("test-role-id"),
+						"kms-plugin-secret-vault-approle_secret-id-555":   []byte("test-secret-id"),
+						"kms-plugin-secret-vault-approle-2_role-id-777":   []byte("test-role-id-777"),
+						"kms-plugin-secret-vault-approle-2_secret-id-777": []byte("test-secret-id-777"),
 					},
 				})
 			}(),
