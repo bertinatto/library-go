@@ -540,7 +540,7 @@ func TestStateController(t *testing.T) {
 				return ec
 			}(),
 			validateFunc: func(ts *testing.T, actions []clientgotesting.Action, destName string, expectedEncryptionCfg *encryptiondata.Config) {
-				// TODO: fix the temporary identity key on config reconstruction in getDesiredEncryptionState
+				// TODO: fix the temporary identity key on config reconstruction in DesiredEncryptionState
 				/*
 					wasSecretValidated := false
 					for _, action := range actions {

@@ -202,7 +202,7 @@ func (c *keyController) checkAndCreateKeys(ctx context.Context, syncContext fact
 		reasons        []string
 	)
 
-	// note here that desiredEncryptionState is never empty because getDesiredEncryptionState
+	// note here that desiredEncryptionState is never empty because DesiredEncryptionState
 	// fills up the state with all resources and set identity write key if write key secrets
 	// are missing.
 
