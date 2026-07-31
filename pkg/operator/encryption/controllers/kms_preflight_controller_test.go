@@ -1032,7 +1032,7 @@ func TestKMSPreflightController(t *testing.T) {
 	}
 }
 
-func TestKMSPreflightController_DeployUsesDryRunEncryptionConfig(t *testing.T) {
+func TestKMSPreflightController_DeployUsesComputedEncryptionConfig(t *testing.T) {
 	apiServer := apiServerWithWellKnownVaultKMS()
 	const matchingHash = "cuZm_g=="
 

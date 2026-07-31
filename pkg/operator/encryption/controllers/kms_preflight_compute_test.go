@@ -22,7 +22,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 )
 
-func TestComputeEncryptionConfigSecretDryRun_FirstKMSKey(t *testing.T) {
+func TestComputeDesiredEncryptionConfigSecret_FirstKMSKey(t *testing.T) {
 	instanceName := "test"
 	apiServer := &configv1.APIServer{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster"},
@@ -48,7 +48,7 @@ func TestComputeEncryptionConfigSecretDryRun_FirstKMSKey(t *testing.T) {
 	provider := newTestProvider([]schema.GroupResource{{Group: "", Resource: "secrets"}})
 	selector := metav1.ListOptions{LabelSelector: "encryption.apiserver.operator.openshift.io/component=" + instanceName}
 
-	requeue, secret, err := computeEncryptionConfigSecretDryRun(
+	requeue, secret, err := computeDesiredEncryptionConfigSecret(
 		context.Background(),
 		instanceName,
 		nil,
@@ -91,7 +91,7 @@ func TestComputeEncryptionConfigSecretDryRun_FirstKMSKey(t *testing.T) {
 	}
 }
 
-func TestComputeEncryptionConfigSecretDryRun_RequeueWhenNotConverged(t *testing.T) {
+func TestComputeDesiredEncryptionConfigSecret_RequeueWhenNotConverged(t *testing.T) {
 	instanceName := "test"
 	apiServer := &configv1.APIServer{ObjectMeta: metav1.ObjectMeta{Name: "cluster"}}
 	fakeKubeClient := fake.NewSimpleClientset()
@@ -104,7 +104,7 @@ func TestComputeEncryptionConfigSecretDryRun_RequeueWhenNotConverged(t *testing.
 	)
 	provider := newTestProvider([]schema.GroupResource{{Group: "", Resource: "secrets"}})
 
-	requeue, secret, err := computeEncryptionConfigSecretDryRun(
+	requeue, secret, err := computeDesiredEncryptionConfigSecret(
 		context.Background(),
 		instanceName,
 		nil,
@@ -120,7 +120,7 @@ func TestComputeEncryptionConfigSecretDryRun_RequeueWhenNotConverged(t *testing.
 	require.Nil(t, secret)
 }
 
-func TestComputeEncryptionConfigSecretDryRun_ExistingKeysPlusProviderChange(t *testing.T) {
+func TestComputeDesiredEncryptionConfigSecret_ExistingKeysPlusProviderChange(t *testing.T) {
 	instanceName := "test"
 	grs := []schema.GroupResource{{Group: "", Resource: "secrets"}}
 	existingKey := encryptiontesting.CreateMigratedEncryptionKeySecretWithKMSPluginConfig(instanceName, grs, 1, metav1.Now().Time)
@@ -161,7 +161,7 @@ func TestComputeEncryptionConfigSecretDryRun_ExistingKeysPlusProviderChange(t *t
 	provider := newTestProvider(grs)
 	selector := metav1.ListOptions{LabelSelector: "encryption.apiserver.operator.openshift.io/component=" + instanceName}
 
-	requeue, secret, err := computeEncryptionConfigSecretDryRun(
+	requeue, secret, err := computeDesiredEncryptionConfigSecret(
 		context.Background(),
 		instanceName,
 		nil,
@@ -223,10 +223,10 @@ func TestRewritePreflightWriteKeyEndpoint(t *testing.T) {
 
 	_, err = rewritePreflightWriteKeyEndpoint(secret, 99)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), `write-key KMS provider with name prefix "99_" not found`)
+	require.Contains(t, err.Error(), `write-key KMS provider with key ID 99 not found`)
 }
 
-func TestComputeEncryptionConfigSecretDryRun_KeyNotNeeded(t *testing.T) {
+func TestComputeDesiredEncryptionConfigSecret_KeyNotNeeded(t *testing.T) {
 	instanceName := "test"
 	grs := []schema.GroupResource{{Group: "", Resource: "secrets"}}
 	existingKey := encryptiontesting.CreateEncryptionKeySecretWithKMSPluginConfig(instanceName, grs, 1)
@@ -263,7 +263,7 @@ func TestComputeEncryptionConfigSecretDryRun_KeyNotNeeded(t *testing.T) {
 	provider := newTestProvider(grs)
 	selector := metav1.ListOptions{LabelSelector: "encryption.apiserver.operator.openshift.io/component=" + instanceName}
 
-	requeue, secret, err := computeEncryptionConfigSecretDryRun(
+	requeue, secret, err := computeDesiredEncryptionConfigSecret(
 		context.Background(),
 		instanceName,
 		nil,
@@ -297,6 +297,139 @@ func TestComputeEncryptionConfigSecretDryRun_KeyNotNeeded(t *testing.T) {
 		}
 	}
 	require.True(t, foundPreflightEndpoint, "expected write-key KMS endpoint rewritten to %s", preflightKMSSocketEndpoint)
+}
+
+func TestComputeDesiredEncryptionConfigSecret_KeyNotNeededWithExistingEncryptionConfig(t *testing.T) {
+	instanceName := "test"
+	grs := []schema.GroupResource{{Group: "", Resource: "secrets"}}
+	existingKey := encryptiontesting.CreateEncryptionKeySecretWithKMSPluginConfig(instanceName, grs, 1)
+
+	apiServer := &configv1.APIServer{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster"},
+		Spec: configv1.APIServerSpec{
+			Encryption: configv1.APIServerEncryption{
+				Type: "KMS",
+				KMS:  encryptiontesting.DefaultKMSPluginConfig,
+			},
+		},
+	}
+	vaultSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "vault-approle-secret", Namespace: "openshift-config"},
+		Data: map[string][]byte{
+			"role-id":   []byte("role"),
+			"secret-id": []byte("secret"),
+		},
+	}
+	vaultCA := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "vault-ca-bundle", Namespace: "openshift-config"},
+		Data:       map[string]string{"ca-bundle.crt": "ca"},
+	}
+	selector := metav1.ListOptions{LabelSelector: "encryption.apiserver.operator.openshift.io/component=" + instanceName}
+	provider := newTestProvider(grs)
+	fakeOperatorClient := v1helpers.NewFakeStaticPodOperatorClient(
+		&operatorv1.StaticPodOperatorSpec{OperatorSpec: operatorv1.OperatorSpec{ManagementState: operatorv1.Managed}},
+		&operatorv1.StaticPodOperatorStatus{},
+		nil,
+		nil,
+	)
+	fakeConfigClient := configv1clientfake.NewSimpleClientset(apiServer)
+
+	// First compute with no live encryption-config, then seed that (pre-rewrite) config as live.
+	fake1 := fake.NewSimpleClientset(existingKey, vaultSecret, vaultCA)
+	_, secret, err := computeDesiredEncryptionConfigSecret(
+		context.Background(),
+		instanceName,
+		nil,
+		provider,
+		&staticEncryptionDeployer{},
+		fakeOperatorClient,
+		fakeConfigClient.ConfigV1().APIServers(),
+		fake1.CoreV1(),
+		selector,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, secret)
+
+	cfg, err := encryptiondata.FromSecret(secret)
+	require.NoError(t, err)
+	for i := range cfg.Encryption.Resources {
+		for j := range cfg.Encryption.Resources[i].Providers {
+			if kms := cfg.Encryption.Resources[i].Providers[j].KMS; kms != nil {
+				kms.Endpoint = "unix:///var/run/kmsplugin/kms-1.sock"
+			}
+		}
+	}
+	liveEC, err := encryptiondata.ToSecret(openshiftConfigManagedNS, "encryption-config-"+instanceName, cfg)
+	require.NoError(t, err)
+
+	// Iterate once so DesiredEncryptionState/ToSecret stabilize against the deployed config,
+	// matching production where ApplySecret would eventually no-op.
+	for i := 0; i < 3; i++ {
+		fakeN := fake.NewSimpleClientset(existingKey, vaultSecret, vaultCA, liveEC.DeepCopy())
+		_, next, err := computeDesiredEncryptionConfigSecret(
+			context.Background(),
+			instanceName,
+			nil,
+			provider,
+			&staticEncryptionDeployer{secret: liveEC.DeepCopy()},
+			fakeOperatorClient,
+			fakeConfigClient.ConfigV1().APIServers(),
+			fakeN.CoreV1(),
+			selector,
+		)
+		require.NoError(t, err, "iter %d", i)
+		require.NotNil(t, next, "iter %d", i)
+
+		nextCfg, err := encryptiondata.FromSecret(next)
+		require.NoError(t, err)
+		for ri := range nextCfg.Encryption.Resources {
+			for pj := range nextCfg.Encryption.Resources[ri].Providers {
+				if kms := nextCfg.Encryption.Resources[ri].Providers[pj].KMS; kms != nil && kms.Endpoint == preflightKMSSocketEndpoint {
+					kms.Endpoint = "unix:///var/run/kmsplugin/kms-1.sock"
+				}
+			}
+		}
+		liveEC, err = encryptiondata.ToSecret(openshiftConfigManagedNS, "encryption-config-"+instanceName, nextCfg)
+		require.NoError(t, err)
+	}
+
+	fakeFinal := fake.NewSimpleClientset(existingKey, vaultSecret, vaultCA, liveEC.DeepCopy())
+	requeue, secret, err := computeDesiredEncryptionConfigSecret(
+		context.Background(),
+		instanceName,
+		nil,
+		provider,
+		&staticEncryptionDeployer{secret: liveEC.DeepCopy()},
+		fakeOperatorClient,
+		fakeConfigClient.ConfigV1().APIServers(),
+		fakeFinal.CoreV1(),
+		selector,
+	)
+	require.NoError(t, err, "compute must succeed when live encryption-config already matches desired")
+	require.False(t, requeue)
+	require.NotNil(t, secret)
+	require.Equal(t, preflightKMSSocketEndpoint, mustWriteKeyEndpoint(t, secret))
+
+	for _, action := range fakeFinal.Actions() {
+		if action.GetVerb() == "create" || action.GetVerb() == "update" {
+			t.Fatalf("live client must not be mutated, got action %#v", action)
+		}
+	}
+}
+
+func mustWriteKeyEndpoint(t *testing.T, secret *corev1.Secret) string {
+	t.Helper()
+	cfg, err := encryptiondata.FromSecret(secret)
+	require.NoError(t, err)
+	for _, resource := range cfg.Encryption.Resources {
+		for _, providerCfg := range resource.Providers {
+			if providerCfg.KMS != nil {
+				return providerCfg.KMS.Endpoint
+			}
+		}
+	}
+	t.Fatal("no KMS provider found")
+	return ""
 }
 
 type staticEncryptionDeployer struct {
