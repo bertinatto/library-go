@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -16,6 +17,7 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/openshift/library-go/pkg/operator/encryption/crypto"
+	"github.com/openshift/library-go/pkg/operator/encryption/encryptiondata"
 	"github.com/openshift/library-go/pkg/operator/encryption/secrets"
 	"github.com/openshift/library-go/pkg/operator/encryption/state"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
@@ -27,6 +29,8 @@ type encryptionKeyPlan struct {
 	reasons        []string
 	internalReason string
 }
+
+const preflightKMSSocketEndpoint = "unix:///var/run/kmsplugin/kms.sock"
 
 func resolveEncryptionModeAndConfig(
 	ctx context.Context,
@@ -225,4 +229,57 @@ func buildEncryptionKeySecret(
 		return nil, err
 	}
 	return secrets.FromKeyState(instanceName, ks)
+}
+
+func latestKeyIDFromSecrets(keySecrets []*corev1.Secret) (uint64, error) {
+	var latestKeyID uint64
+	foundKey := false
+	for _, s := range keySecrets {
+		id, ok := state.NameToKeyID(s.Name)
+		if !ok {
+			continue
+		}
+		if !foundKey || id > latestKeyID {
+			latestKeyID = id
+			foundKey = true
+		}
+	}
+	if !foundKey {
+		return 0, fmt.Errorf("no encryption key secrets found")
+	}
+	return latestKeyID, nil
+}
+
+// rewriteWriteKeyKMSEndpoint rewrites KMS providers for the given write-key ID from
+// per-key production sockets to endpoint. Used when preflight reuses an existing
+// write key (no new key planned) so the checker can dial the fixed preflight socket.
+func rewriteWriteKeyKMSEndpoint(secret *corev1.Secret, keyID uint64, endpoint string) (*corev1.Secret, error) {
+	cfg, err := encryptiondata.FromSecret(secret)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil || cfg.Encryption == nil {
+		return nil, fmt.Errorf("encryption configuration is empty")
+	}
+
+	wantKeyID := strconv.FormatUint(keyID, 10)
+	rewrote := false
+	for i := range cfg.Encryption.Resources {
+		for j := range cfg.Encryption.Resources[i].Providers {
+			kms := cfg.Encryption.Resources[i].Providers[j].KMS
+			if kms == nil {
+				continue
+			}
+			nameKeyID, _, ok := strings.Cut(kms.Name, "_")
+			if !ok || nameKeyID != wantKeyID {
+				continue
+			}
+			kms.Endpoint = endpoint
+			rewrote = true
+		}
+	}
+	if !rewrote {
+		return nil, fmt.Errorf("write-key KMS provider with key ID %s not found in encryption config", wantKeyID)
+	}
+	return encryptiondata.ToSecret(secret.Namespace, secret.Name, cfg)
 }
