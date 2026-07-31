@@ -204,7 +204,7 @@ func TestComputeDesiredEncryptionConfigFirstKey(t *testing.T) {
 		metav1.ListOptions{},
 		ComputeDesiredEncryptionConfigOptions{
 			IncludePlannedKey:   true,
-			KMSEndpointOverride: "unix:///var/run/kmsplugin/kms.sock",
+			KMSEndpointOverride: preflightKMSSocketEndpoint,
 		},
 	)
 	if err != nil {
@@ -230,7 +230,7 @@ func TestComputeDesiredEncryptionConfigFirstKey(t *testing.T) {
 	if len(kmsConfigs) != 1 || kmsConfigs[0].Name != "1" {
 		t.Fatalf("expected key ID 1, got %+v", kmsConfigs)
 	}
-	if kmsConfigs[0].Endpoint != "unix:///var/run/kmsplugin/kms.sock" {
+	if kmsConfigs[0].Endpoint != preflightKMSSocketEndpoint {
 		t.Errorf("expected preflight endpoint override, got %s", kmsConfigs[0].Endpoint)
 	}
 }
