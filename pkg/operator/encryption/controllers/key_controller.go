@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"time"
 
@@ -170,60 +171,44 @@ func (c *keyController) sync(ctx context.Context, syncCtx factory.SyncContext) (
 }
 
 func (c *keyController) checkAndCreateKeys(ctx context.Context, syncContext factory.SyncContext, encryptedGRs []schema.GroupResource) error {
-	currentMode, externalReason, apiEncryptionConfiguration, err := c.getCurrentModeReasonAndEncryptionConfig(ctx)
+	result, err := ComputeDesiredEncryptionConfig(
+		ctx,
+		c.instanceName,
+		c.unsupportedConfigPrefix,
+		encryptedGRs,
+		c.deployer,
+		c.secretClient,
+		c.configMapClient,
+		c.apiServerClient,
+		c.operatorClient,
+		c.encryptionSecretSelector,
+		ComputeDesiredEncryptionConfigOptions{IncludePlannedKey: true},
+	)
 	if err != nil {
+		var buildErr plannedKeyBuildError
+		if stderrors.As(err, &buildErr) {
+			return fmt.Errorf("failed to create key: %v", buildErr.err)
+		}
 		return err
 	}
-
-	currentConfig, desiredEncryptionState, secrets, isProgressingReason, err := statemachine.GetEncryptionConfigAndState(ctx, c.deployer, c.secretClient, c.encryptionSecretSelector, encryptedGRs)
-	if err != nil {
-		return err
-	}
-	if len(isProgressingReason) > 0 {
+	if len(result.ProgressingReason) > 0 {
 		syncContext.Queue().AddAfter(syncContext.QueueKey(), 2*time.Minute)
 		return nil
 	}
-
-	// avoid intended start of encryption
-	hasBeenOnBefore := currentConfig != nil || len(secrets) > 0
-	if currentMode == state.Identity && !hasBeenOnBefore {
+	if result.PlannedKey == nil {
 		return nil
 	}
 
-	// note here that desiredEncryptionState is never empty because GetDesiredEncryptionState
-	// fills up the state with all resources and set identity write key if write key secrets
-	// are missing.
-
-	var desiredProviderCfg kmsProviderConfig = noopKMSProviderConfig{}
-	if currentMode == state.KMS {
-		var err error
-		desiredProviderCfg, err = newKMSProviderConfig(apiEncryptionConfiguration.KMS)
-		if err != nil {
-			return err
-		}
-	}
-
-	keyPlan, err := planNextEncryptionKey(desiredEncryptionState, currentMode, externalReason, encryptedGRs, desiredProviderCfg)
-	if err != nil {
-		return err
-	}
-	if !keyPlan.needed {
-		return nil
-	}
-	keySecret, err := c.generateKeySecret(ctx, keyPlan.keyID, currentMode, apiEncryptionConfiguration, desiredProviderCfg, keyPlan.internalReason, externalReason)
-	if err != nil {
-		return fmt.Errorf("failed to create key: %v", err)
-	}
-	_, createErr := c.secretClient.Secrets("openshift-config-managed").Create(ctx, keySecret, metav1.CreateOptions{})
+	_, createErr := c.secretClient.Secrets("openshift-config-managed").Create(ctx, result.PlannedKey.Secret, metav1.CreateOptions{})
 	if errors.IsAlreadyExists(createErr) {
-		return c.validateExistingSecret(ctx, keySecret, keyPlan.keyID)
+		return c.validateExistingSecret(ctx, result.PlannedKey.Secret, result.PlannedKey.KeyID)
 	}
 	if createErr != nil {
-		syncContext.Recorder().Warningf("EncryptionKeyCreateFailed", "Secret %q failed to create: %v", keySecret.Name, err)
+		syncContext.Recorder().Warningf("EncryptionKeyCreateFailed", "Secret %q failed to create: %v", result.PlannedKey.Secret.Name, createErr)
 		return createErr
 	}
 
-	syncContext.Recorder().Eventf("EncryptionKeyCreated", "Secret %q successfully created: %q", keySecret.Name, keyPlan.reasons)
+	syncContext.Recorder().Eventf("EncryptionKeyCreated", "Secret %q successfully created: %q", result.PlannedKey.Secret.Name, result.PlannedKey.Reasons)
 
 	return nil
 }
@@ -245,22 +230,6 @@ func (c *keyController) validateExistingSecret(ctx context.Context, keySecret *c
 	}
 
 	return nil // we made this key earlier
-}
-
-func (c *keyController) generateKeySecret(ctx context.Context, keyID uint64, currentMode state.Mode, apiServerEncryption configv1.APIServerEncryption, desiredProviderCfg kmsProviderConfig, internalReason, externalReason string) (*corev1.Secret, error) {
-	return buildEncryptionKeySecret(
-		ctx,
-		c.instanceName,
-		keyID,
-		currentMode,
-		apiServerEncryption,
-		desiredProviderCfg,
-		c.secretClient,
-		c.configMapClient,
-		internalReason,
-		externalReason,
-		"",
-	)
 }
 
 func (c *keyController) getCurrentModeReasonAndEncryptionConfig(ctx context.Context) (state.Mode, string, configv1.APIServerEncryption, error) {
