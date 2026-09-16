@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/operator/encryption/encryptiondata"
 	"github.com/openshift/library-go/pkg/operator/encryption/kms"
 	encryptiontesting "github.com/openshift/library-go/pkg/operator/encryption/testing"
@@ -750,8 +751,8 @@ func TestFromEncryptionStateKMSPluginConfigValidation(t *testing.T) {
 							Encryption: &apiserverconfigv1.KMSConfiguration{APIVersion: "v2", Name: "1", Endpoint: "unix:///var/run/kmsplugin/kms-1.sock"},
 							Plugin: kms.KMSPluginConfig{
 								TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-								Type:     kms.VaultKMSProvider,
-								Vault: kms.VaultKMSPluginConfig{
+								Type:     configv1.VaultKMSProvider,
+								Vault: configv1.VaultKMSPluginConfig{
 									VaultAddress: "https://vault-a.example.com",
 									VaultKeyPath: "transit/keys/key-a",
 								},
@@ -767,8 +768,8 @@ func TestFromEncryptionStateKMSPluginConfigValidation(t *testing.T) {
 							Encryption: &apiserverconfigv1.KMSConfiguration{APIVersion: "v2", Name: "1", Endpoint: "unix:///var/run/kmsplugin/kms-1.sock"},
 							Plugin: kms.KMSPluginConfig{
 								TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-								Type:     kms.VaultKMSProvider,
-								Vault: kms.VaultKMSPluginConfig{
+								Type:     configv1.VaultKMSProvider,
+								Vault: configv1.VaultKMSPluginConfig{
 									VaultAddress: "https://vault-b.example.com",
 									VaultKeyPath: "transit/keys/key-b",
 								},

@@ -34,21 +34,21 @@ func newSidecarTestFixtures(t *testing.T) sidecarTestFixtures {
 
 	vaultConfig := &kms.KMSPluginConfig{
 		TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-		Type:     kms.VaultKMSProvider,
-		Vault: kms.VaultKMSPluginConfig{
+		Type:     configv1.VaultKMSProvider,
+		Vault: configv1.VaultKMSPluginConfig{
 			KMSPluginImage:     "quay.io/test/vault:v1",
 			VaultAddress:       "https://vault.example.com:8200",
 			VaultNamespace:     "my-namespace",
 			VaultAuthNamespace: "my-auth-namespace",
 			VaultKeyPath:       "transit/keys/my-key",
-			Authentication: kms.VaultAuthentication{
-				Type: kms.VaultAuthenticationTypeAppRole,
-				AppRole: kms.VaultAppRoleAuthentication{
-					Secret: kms.VaultSecretReference{Name: "vault-approle"},
+			Authentication: configv1.VaultAuthentication{
+				Type: configv1.VaultAuthenticationTypeAppRole,
+				AppRole: configv1.VaultAppRoleAuthentication{
+					Secret: configv1.VaultSecretReference{Name: "vault-approle"},
 				},
 			},
-			TLS: kms.VaultTLSConfig{
-				CABundle:   kms.VaultConfigMapReference{Name: "vault-ca-bundle"},
+			TLS: configv1.VaultTLSConfig{
+				CABundle:   configv1.VaultConfigMapReference{Name: "vault-ca-bundle"},
 				ServerName: "vault.internal.example.com",
 			},
 		},
@@ -321,20 +321,20 @@ func TestEnsureKMSPluginSidecarInPodSpec(t *testing.T) {
 			secretClient: func() corev1client.SecretsGetter {
 				vaultConfig2 := &kms.KMSPluginConfig{
 					TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-					Type:     kms.VaultKMSProvider,
-					Vault: kms.VaultKMSPluginConfig{
+					Type:     configv1.VaultKMSProvider,
+					Vault: configv1.VaultKMSPluginConfig{
 						KMSPluginImage: "quay.io/test/vault:v2",
 						VaultAddress:   "https://vault2.example.com:8200",
 						VaultNamespace: "other-namespace",
 						VaultKeyPath:   "transit2/keys/other-key",
-						Authentication: kms.VaultAuthentication{
-							Type: kms.VaultAuthenticationTypeAppRole,
-							AppRole: kms.VaultAppRoleAuthentication{
-								Secret: kms.VaultSecretReference{Name: "vault-approle-2"},
+						Authentication: configv1.VaultAuthentication{
+							Type: configv1.VaultAuthenticationTypeAppRole,
+							AppRole: configv1.VaultAppRoleAuthentication{
+								Secret: configv1.VaultSecretReference{Name: "vault-approle-2"},
 							},
 						},
-						TLS: kms.VaultTLSConfig{
-							CABundle: kms.VaultConfigMapReference{Name: "vault-ca-bundle-2"},
+						TLS: configv1.VaultTLSConfig{
+							CABundle: configv1.VaultConfigMapReference{Name: "vault-ca-bundle-2"},
 						},
 					},
 				}

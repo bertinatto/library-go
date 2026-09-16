@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/api/features"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/encryption/kms"
@@ -44,7 +45,7 @@ type sidecarProvider interface {
 // wiring in reference data (secrets, configmaps) via the referenceDataResolver.
 func newSidecarProvider(keyID string, udsPath string, pluginConfig kms.KMSPluginConfig, refData *referenceDataResolver) (sidecarProvider, error) {
 	switch pluginConfig.Type {
-	case kms.VaultKMSProvider:
+	case configv1.VaultKMSProvider:
 		return newVaultSidecarProvider(vaultSidecarPrefix, keyID, udsPath, pluginConfig.Vault, refData)
 	default:
 		return nil, fmt.Errorf("unsupported KMS plugin configuration")

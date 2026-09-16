@@ -1,6 +1,7 @@
 package kms
 
 import (
+	configv1 "github.com/openshift/api/config/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -18,56 +19,24 @@ func AddToScheme(scheme *runtime.Scheme) error {
 // Remove this type when the encryption lifecycle uses unstructured configuration.
 type KMSPluginConfig struct {
 	metav1.TypeMeta `json:",inline"`
-	Type            KMSProviderType      `json:"type"`
-	Vault           VaultKMSPluginConfig `json:"vault,omitempty,omitzero"`
+	Type            configv1.KMSProviderType      `json:"type"`
+	Vault           configv1.VaultKMSPluginConfig `json:"vault,omitempty,omitzero"`
 }
 
-type KMSProviderType string
+// Aliases preserve the exported names while reusing the API definitions.
+type KMSProviderType = configv1.KMSProviderType
+type VaultSecretReference = configv1.VaultSecretReference
+type VaultConfigMapReference = configv1.VaultConfigMapReference
+type VaultAuthentication = configv1.VaultAuthentication
+type VaultAuthenticationType = configv1.VaultAuthenticationType
+type VaultAppRoleAuthentication = configv1.VaultAppRoleAuthentication
+type VaultKMSPluginConfig = configv1.VaultKMSPluginConfig
+type VaultTLSConfig = configv1.VaultTLSConfig
 
 const (
-	VaultKMSProvider KMSProviderType = "Vault"
+	VaultKMSProvider               = configv1.VaultKMSProvider
+	VaultAuthenticationTypeAppRole = configv1.VaultAuthenticationTypeAppRole
 )
-
-type VaultSecretReference struct {
-	Name string `json:"name,omitempty"`
-}
-
-type VaultConfigMapReference struct {
-	Name string `json:"name,omitempty"`
-}
-
-type VaultAuthentication struct {
-	Type    VaultAuthenticationType    `json:"type,omitempty"`
-	AppRole VaultAppRoleAuthentication `json:"appRole,omitzero"`
-}
-
-type VaultAuthenticationType string
-
-const (
-	VaultAuthenticationTypeAppRole VaultAuthenticationType = "AppRole"
-)
-
-type VaultAppRoleAuthentication struct {
-	Secret VaultSecretReference `json:"secret,omitzero"`
-}
-
-type VaultKMSPluginConfig struct {
-	KMSPluginImage string `json:"kmsPluginImage,omitempty"`
-	VaultAddress   string `json:"vaultAddress,omitempty"`
-
-	VaultNamespace     string `json:"vaultNamespace,omitempty"`
-	VaultAuthNamespace string `json:"vaultAuthNamespace,omitempty"`
-
-	TLS            VaultTLSConfig      `json:"tls,omitzero"`
-	Authentication VaultAuthentication `json:"authentication,omitzero"`
-
-	VaultKeyPath string `json:"vaultKeyPath,omitempty"`
-}
-
-type VaultTLSConfig struct {
-	CABundle   VaultConfigMapReference `json:"caBundle,omitzero"`
-	ServerName string                  `json:"serverName,omitempty"`
-}
 
 func (in *KMSPluginConfig) DeepCopy() *KMSPluginConfig {
 	if in == nil {
@@ -82,12 +51,4 @@ func (in *KMSPluginConfig) DeepCopyObject() runtime.Object {
 		return nil
 	}
 	return in.DeepCopy()
-}
-
-func (in *VaultKMSPluginConfig) DeepCopy() *VaultKMSPluginConfig {
-	if in == nil {
-		return nil
-	}
-	out := *in
-	return &out
 }

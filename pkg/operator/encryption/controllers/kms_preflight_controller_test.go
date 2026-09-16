@@ -30,17 +30,17 @@ import (
 )
 
 var (
-	wellKnownBaseVaultConfig = kms.VaultKMSPluginConfig{
+	wellKnownBaseVaultConfig = configv1.VaultKMSPluginConfig{
 		KMSPluginImage: "quay.io/test/plugin:v1",
 		VaultAddress:   "https://vault.example.com:8200",
-		Authentication: kms.VaultAuthentication{
-			Type: kms.VaultAuthenticationTypeAppRole,
-			AppRole: kms.VaultAppRoleAuthentication{
-				Secret: kms.VaultSecretReference{Name: "vault-approle"},
+		Authentication: configv1.VaultAuthentication{
+			Type: configv1.VaultAuthenticationTypeAppRole,
+			AppRole: configv1.VaultAppRoleAuthentication{
+				Secret: configv1.VaultSecretReference{Name: "vault-approle"},
 			},
 		},
-		TLS: kms.VaultTLSConfig{
-			CABundle: kms.VaultConfigMapReference{Name: "vault-ca-bundle"},
+		TLS: configv1.VaultTLSConfig{
+			CABundle: configv1.VaultConfigMapReference{Name: "vault-ca-bundle"},
 		},
 		VaultKeyPath: "transit/keys/my-key",
 	}
@@ -65,7 +65,7 @@ func TestKMSConfigHasher(t *testing.T) {
 	// the test and copying the actual values from the error output.
 	scenarios := []struct {
 		name          string
-		vaultConfig   kms.VaultKMSPluginConfig
+		vaultConfig   configv1.VaultKMSPluginConfig
 		resources     []runtime.Object
 		expectedHash  string
 		expectedError string
@@ -78,7 +78,7 @@ func TestKMSConfigHasher(t *testing.T) {
 		},
 		{
 			name: "changing KMSPluginImage",
-			vaultConfig: func() kms.VaultKMSPluginConfig {
+			vaultConfig: func() configv1.VaultKMSPluginConfig {
 				c := wellKnownBaseVaultConfig
 				c.KMSPluginImage = "registry.example.com/plugin@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				return c
@@ -88,7 +88,7 @@ func TestKMSConfigHasher(t *testing.T) {
 		},
 		{
 			name: "changing VaultAddress",
-			vaultConfig: func() kms.VaultKMSPluginConfig {
+			vaultConfig: func() configv1.VaultKMSPluginConfig {
 				c := wellKnownBaseVaultConfig
 				c.VaultAddress = "https://other-vault.example.com:8200"
 				return c
@@ -98,7 +98,7 @@ func TestKMSConfigHasher(t *testing.T) {
 		},
 		{
 			name: "changing VaultNamespace",
-			vaultConfig: func() kms.VaultKMSPluginConfig {
+			vaultConfig: func() configv1.VaultKMSPluginConfig {
 				c := wellKnownBaseVaultConfig
 				c.VaultNamespace = "my-namespace"
 				return c
@@ -108,7 +108,7 @@ func TestKMSConfigHasher(t *testing.T) {
 		},
 		{
 			name: "changing VaultAuthNamespace",
-			vaultConfig: func() kms.VaultKMSPluginConfig {
+			vaultConfig: func() configv1.VaultKMSPluginConfig {
 				c := wellKnownBaseVaultConfig
 				c.VaultAuthNamespace = "my-auth-namespace"
 				return c
@@ -118,7 +118,7 @@ func TestKMSConfigHasher(t *testing.T) {
 		},
 		{
 			name: "changing VaultKeyPath",
-			vaultConfig: func() kms.VaultKMSPluginConfig {
+			vaultConfig: func() configv1.VaultKMSPluginConfig {
 				c := wellKnownBaseVaultConfig
 				c.VaultKeyPath = "transit/keys/other-key"
 				return c
@@ -128,7 +128,7 @@ func TestKMSConfigHasher(t *testing.T) {
 		},
 		{
 			name: "changing TLS.ServerName",
-			vaultConfig: func() kms.VaultKMSPluginConfig {
+			vaultConfig: func() configv1.VaultKMSPluginConfig {
 				c := wellKnownBaseVaultConfig
 				c.TLS.ServerName = "vault.example.com"
 				return c
@@ -138,7 +138,7 @@ func TestKMSConfigHasher(t *testing.T) {
 		},
 		{
 			name: "changing TLS.CABundle.Name",
-			vaultConfig: func() kms.VaultKMSPluginConfig {
+			vaultConfig: func() configv1.VaultKMSPluginConfig {
 				c := wellKnownBaseVaultConfig
 				c.TLS.CABundle.Name = "other-ca-bundle"
 				return c
@@ -151,7 +151,7 @@ func TestKMSConfigHasher(t *testing.T) {
 		},
 		{
 			name: "changing Authentication.AppRole.Secret.Name",
-			vaultConfig: func() kms.VaultKMSPluginConfig {
+			vaultConfig: func() configv1.VaultKMSPluginConfig {
 				c := wellKnownBaseVaultConfig
 				c.Authentication.AppRole.Secret.Name = "other-secret"
 				return c
@@ -222,7 +222,7 @@ func TestKMSConfigHasher(t *testing.T) {
 		},
 		{
 			name: "no configmap configured",
-			vaultConfig: func() kms.VaultKMSPluginConfig {
+			vaultConfig: func() configv1.VaultKMSPluginConfig {
 				c := wellKnownBaseVaultConfig
 				c.TLS.CABundle.Name = ""
 				return c
@@ -280,7 +280,7 @@ func TestKMSConfigHasher(t *testing.T) {
 		t.Run(scenario.name, func(t *testing.T) {
 			provider, err := newKMSProviderConfig(kms.KMSPluginConfig{
 				TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-				Type:     kms.VaultKMSProvider,
+				Type:     configv1.VaultKMSProvider,
 				Vault:    scenario.vaultConfig,
 			})
 			if err != nil {
@@ -398,7 +398,7 @@ func TestKMSPreflightController(t *testing.T) {
 				Type: configv1.EncryptionTypeKMS,
 				KMS: kmsConfigReference(kms.KMSPluginConfig{
 					TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-					Type:     kms.VaultKMSProvider,
+					Type:     configv1.VaultKMSProvider,
 					Vault:    wellKnownBaseVaultConfig,
 				}),
 			},

@@ -7,18 +7,20 @@ import (
 	"testing"
 	"time"
 
-	operatorv1 "github.com/openshift/api/operator/v1"
-	"github.com/openshift/library-go/pkg/operator/encryption/encoding"
-	"github.com/openshift/library-go/pkg/operator/encryption/kms"
-	"github.com/openshift/library-go/pkg/operator/encryption/secrets"
-	"github.com/openshift/library-go/pkg/operator/encryption/state"
-	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	apiserverconfigv1 "k8s.io/apiserver/pkg/apis/apiserver/v1"
 	clientgotesting "k8s.io/client-go/testing"
+
+	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
+	"github.com/openshift/library-go/pkg/operator/encryption/encoding"
+	"github.com/openshift/library-go/pkg/operator/encryption/kms"
+	"github.com/openshift/library-go/pkg/operator/encryption/secrets"
+	"github.com/openshift/library-go/pkg/operator/encryption/state"
+	"github.com/openshift/library-go/pkg/operator/v1helpers"
 )
 
 const (
@@ -99,18 +101,18 @@ func CreateExpiredMigratedEncryptionKeySecretWithRawKey(targetNS string, grs []s
 
 var DefaultKMSPluginConfig = kms.KMSPluginConfig{
 	TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-	Type:     kms.VaultKMSProvider,
-	Vault: kms.VaultKMSPluginConfig{
+	Type:     configv1.VaultKMSProvider,
+	Vault: configv1.VaultKMSPluginConfig{
 		KMSPluginImage: "registry.example.com/kms-plugin@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
 		VaultAddress:   "https://vault.example.com",
-		Authentication: kms.VaultAuthentication{
-			Type: kms.VaultAuthenticationTypeAppRole,
-			AppRole: kms.VaultAppRoleAuthentication{
-				Secret: kms.VaultSecretReference{Name: "vault-approle-secret"},
+		Authentication: configv1.VaultAuthentication{
+			Type: configv1.VaultAuthenticationTypeAppRole,
+			AppRole: configv1.VaultAppRoleAuthentication{
+				Secret: configv1.VaultSecretReference{Name: "vault-approle-secret"},
 			},
 		},
-		TLS: kms.VaultTLSConfig{
-			CABundle: kms.VaultConfigMapReference{Name: "vault-ca-bundle"},
+		TLS: configv1.VaultTLSConfig{
+			CABundle: configv1.VaultConfigMapReference{Name: "vault-ca-bundle"},
 		},
 		VaultKeyPath: "transit/keys/test-transit-key",
 	},

@@ -36,7 +36,7 @@ func ResolveKMSConfig(ctx context.Context, client dynamic.Interface, reference c
 	}
 	config := kms.KMSPluginConfig{
 		TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-		Type:     kms.KMSProviderType(reference.Type),
+		Type:     reference.Type,
 	}
 	switch reference.Type {
 	case configv1.VaultKMSProvider:
@@ -67,7 +67,7 @@ func ResolveKMSConfig(ctx context.Context, client dynamic.Interface, reference c
 		if config.Vault.Authentication.Type == "" {
 			return kms.KMSPluginConfig{}, fmt.Errorf("KMS plugin configuration spec.authentication.type must not be empty")
 		}
-		if config.Vault.Authentication.Type == kms.VaultAuthenticationTypeAppRole && config.Vault.Authentication.AppRole.Secret.Name == "" {
+		if config.Vault.Authentication.Type == configv1.VaultAuthenticationTypeAppRole && config.Vault.Authentication.AppRole.Secret.Name == "" {
 			return kms.KMSPluginConfig{}, fmt.Errorf("KMS plugin configuration spec.authentication.appRole.secret.name must not be empty")
 		}
 	default:

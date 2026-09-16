@@ -18,9 +18,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/library-go/pkg/operator/encryption/kms"
 
 	"github.com/openshift/library-go/pkg/operator/encryption/encryptiondata"
-	"github.com/openshift/library-go/pkg/operator/encryption/kms"
 	"github.com/openshift/library-go/pkg/operator/encryption/secrets"
 	"github.com/openshift/library-go/pkg/operator/encryption/state"
 	"github.com/openshift/library-go/pkg/operator/encryption/statemachine"
@@ -81,7 +81,7 @@ func newKMSVaultAPIServer() *configv1.APIServer {
 				Type: configv1.EncryptionTypeKMS,
 				KMS: kmsConfigReference(kms.KMSPluginConfig{
 					TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-					Type:     kms.VaultKMSProvider,
+					Type:     configv1.VaultKMSProvider,
 					Vault:    wellKnownBaseVaultConfig,
 				}),
 			},
@@ -94,7 +94,7 @@ func newKMSVaultAPIServer() *configv1.APIServer {
 func newExistingKMSKeySecret(t *testing.T, instanceName string, apiServer *configv1.APIServer, encryptedGRs []schema.GroupResource, keyID string) *corev1.Secret {
 	t.Helper()
 
-	oldPlugin := kms.KMSPluginConfig{TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"}, Type: kms.VaultKMSProvider, Vault: wellKnownBaseVaultConfig}
+	oldPlugin := kms.KMSPluginConfig{TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"}, Type: configv1.VaultKMSProvider, Vault: wellKnownBaseVaultConfig}
 	oldPlugin.Vault.VaultKeyPath = "transit/keys/old-key"
 	ks := state.KeyState{
 		Key:  apiserverconfigv1.Key{Name: keyID, Secret: base64.StdEncoding.EncodeToString(make([]byte, 16))},
@@ -171,7 +171,7 @@ func vaultPluginConfig(t *testing.T, config kms.KMSPluginConfig) *unstructured.U
 func newKMSDynamicClient(t *testing.T, configs ...kms.KMSPluginConfig) *dynamicfake.FakeDynamicClient {
 	t.Helper()
 	if len(configs) == 0 {
-		configs = []kms.KMSPluginConfig{{Type: kms.VaultKMSProvider, Vault: wellKnownBaseVaultConfig}}
+		configs = []kms.KMSPluginConfig{{Type: configv1.VaultKMSProvider, Vault: wellKnownBaseVaultConfig}}
 	}
 	objects := make([]runtime.Object, 0, len(configs))
 	for _, config := range configs {

@@ -654,7 +654,7 @@ func (noopKMSProviderConfig) sourceConfig() interface{} { return nil }
 
 func newKMSProviderConfig(plugin kms.KMSPluginConfig) (kmsProviderConfig, error) {
 	switch plugin.Type {
-	case kms.VaultKMSProvider:
+	case configv1.VaultKMSProvider:
 		return &vaultProviderConfig{plugin.Vault}, nil
 	default:
 		return nil, fmt.Errorf("unsupported KMS provider type %q", plugin.Type)
@@ -662,7 +662,7 @@ func newKMSProviderConfig(plugin kms.KMSPluginConfig) (kmsProviderConfig, error)
 }
 
 type vaultProviderConfig struct {
-	vault kms.VaultKMSPluginConfig
+	vault configv1.VaultKMSPluginConfig
 }
 
 func (v *vaultProviderConfig) sourceConfig() interface{} {
@@ -671,7 +671,7 @@ func (v *vaultProviderConfig) sourceConfig() interface{} {
 
 func (v *vaultProviderConfig) referencedSecretName() (string, []string, error) {
 	switch v.vault.Authentication.Type {
-	case kms.VaultAuthenticationTypeAppRole:
+	case configv1.VaultAuthenticationTypeAppRole:
 		// The Vault AppRole secret must contain "role-id" and "secret-id" keys.
 		// These are the only keys carried into the encryption key secret.
 		return v.vault.Authentication.AppRole.Secret.Name, []string{"role-id", "secret-id"}, nil
@@ -688,8 +688,8 @@ func (v *vaultProviderConfig) referencedConfigMapName() (string, []string, error
 }
 
 func (v *vaultProviderConfig) sameProviderInstance(stored kms.KMSPluginConfig) (bool, error) {
-	if stored.Type != kms.VaultKMSProvider {
-		klog.V(2).Infof("KMS provider instance changed: provider type changed from %q to %q", stored.Type, kms.VaultKMSProvider)
+	if stored.Type != configv1.VaultKMSProvider {
+		klog.V(2).Infof("KMS provider instance changed: provider type changed from %q to %q", stored.Type, configv1.VaultKMSProvider)
 		return false, nil
 	}
 	if v.vault.VaultAddress != stored.Vault.VaultAddress {

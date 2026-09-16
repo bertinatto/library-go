@@ -9,21 +9,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/openshift/library-go/pkg/operator/encryption/kms"
 	clocktesting "k8s.io/utils/clock/testing"
 
-	operatorv1 "github.com/openshift/api/operator/v1"
-	configv1clientfake "github.com/openshift/client-go/config/clientset/versioned/fake"
-	configv1informers "github.com/openshift/client-go/config/informers/externalversions"
-	"github.com/openshift/library-go/pkg/controller/factory"
-	encryptiondeployer "github.com/openshift/library-go/pkg/operator/encryption/deployer"
-	"github.com/openshift/library-go/pkg/operator/encryption/encryptiondata"
-	encryptiondatatesting "github.com/openshift/library-go/pkg/operator/encryption/encryptiondata/testing"
-	"github.com/openshift/library-go/pkg/operator/encryption/kms"
-	"github.com/openshift/library-go/pkg/operator/encryption/state"
-	encryptiontesting "github.com/openshift/library-go/pkg/operator/encryption/testing"
-	"github.com/openshift/library-go/pkg/operator/events"
-	"github.com/openshift/library-go/pkg/operator/events/eventstesting"
-	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +21,20 @@ import (
 	apiserverconfigv1 "k8s.io/apiserver/pkg/apis/apiserver/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	clientgotesting "k8s.io/client-go/testing"
+
+	configv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
+	configv1clientfake "github.com/openshift/client-go/config/clientset/versioned/fake"
+	configv1informers "github.com/openshift/client-go/config/informers/externalversions"
+	"github.com/openshift/library-go/pkg/controller/factory"
+	encryptiondeployer "github.com/openshift/library-go/pkg/operator/encryption/deployer"
+	"github.com/openshift/library-go/pkg/operator/encryption/encryptiondata"
+	encryptiondatatesting "github.com/openshift/library-go/pkg/operator/encryption/encryptiondata/testing"
+	"github.com/openshift/library-go/pkg/operator/encryption/state"
+	encryptiontesting "github.com/openshift/library-go/pkg/operator/encryption/testing"
+	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/library-go/pkg/operator/events/eventstesting"
+	"github.com/openshift/library-go/pkg/operator/v1helpers"
 )
 
 func TestStateController(t *testing.T) {
@@ -918,18 +920,18 @@ func TestStateController(t *testing.T) {
 				encryptiontesting.CreateExpiredMigratedEncryptionKeySecretWithKMSPluginConfig("kms", []schema.GroupResource{{Group: "", Resource: "secrets"}}, 1),
 				encryptiontesting.CreateEncryptionKeySecretWithCustomKMSPluginConfig("kms", []schema.GroupResource{{Group: "", Resource: "secrets"}}, 2, kms.KMSPluginConfig{
 					TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-					Type:     kms.VaultKMSProvider,
-					Vault: kms.VaultKMSPluginConfig{
+					Type:     configv1.VaultKMSProvider,
+					Vault: configv1.VaultKMSPluginConfig{
 						KMSPluginImage: "registry.example.com/kms-plugin@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
 						VaultAddress:   "https://vault2.example.com",
-						Authentication: kms.VaultAuthentication{
-							Type: kms.VaultAuthenticationTypeAppRole,
-							AppRole: kms.VaultAppRoleAuthentication{
-								Secret: kms.VaultSecretReference{Name: "vault-approle-secret-2"},
+						Authentication: configv1.VaultAuthentication{
+							Type: configv1.VaultAuthenticationTypeAppRole,
+							AppRole: configv1.VaultAppRoleAuthentication{
+								Secret: configv1.VaultSecretReference{Name: "vault-approle-secret-2"},
 							},
 						},
-						TLS: kms.VaultTLSConfig{
-							CABundle: kms.VaultConfigMapReference{Name: "vault-ca-bundle-2"},
+						TLS: configv1.VaultTLSConfig{
+							CABundle: configv1.VaultConfigMapReference{Name: "vault-ca-bundle-2"},
 						},
 						VaultKeyPath: "transit/keys/test-transit-key-2",
 					},
@@ -1019,18 +1021,18 @@ func TestStateController(t *testing.T) {
 					"1": encryptiontesting.DefaultKMSPluginConfig,
 					"2": {
 						TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-						Type:     kms.VaultKMSProvider,
-						Vault: kms.VaultKMSPluginConfig{
+						Type:     configv1.VaultKMSProvider,
+						Vault: configv1.VaultKMSPluginConfig{
 							KMSPluginImage: "registry.example.com/kms-plugin@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
 							VaultAddress:   "https://vault2.example.com",
-							Authentication: kms.VaultAuthentication{
-								Type: kms.VaultAuthenticationTypeAppRole,
-								AppRole: kms.VaultAppRoleAuthentication{
-									Secret: kms.VaultSecretReference{Name: "vault-approle-secret-2"},
+							Authentication: configv1.VaultAuthentication{
+								Type: configv1.VaultAuthenticationTypeAppRole,
+								AppRole: configv1.VaultAppRoleAuthentication{
+									Secret: configv1.VaultSecretReference{Name: "vault-approle-secret-2"},
 								},
 							},
-							TLS: kms.VaultTLSConfig{
-								CABundle: kms.VaultConfigMapReference{Name: "vault-ca-bundle-2"},
+							TLS: configv1.VaultTLSConfig{
+								CABundle: configv1.VaultConfigMapReference{Name: "vault-ca-bundle-2"},
 							},
 							VaultKeyPath: "transit/keys/test-transit-key-2",
 						},
@@ -1136,17 +1138,17 @@ func TestStateController(t *testing.T) {
 				},
 				KMSPlugins: map[string]kms.KMSPluginConfig{"2": {
 					TypeMeta: metav1.TypeMeta{APIVersion: kms.SchemeGroupVersion.String(), Kind: "KMSPluginConfig"},
-					Type:     kms.VaultKMSProvider,
-					Vault: kms.VaultKMSPluginConfig{
+					Type:     configv1.VaultKMSProvider,
+					Vault: configv1.VaultKMSPluginConfig{
 						KMSPluginImage: "registry.example.com/kms-plugin@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
 						VaultAddress:   "https://vault.example.com",
-						TLS: kms.VaultTLSConfig{
-							CABundle: kms.VaultConfigMapReference{Name: "vault-ca-bundle"},
+						TLS: configv1.VaultTLSConfig{
+							CABundle: configv1.VaultConfigMapReference{Name: "vault-ca-bundle"},
 						},
-						Authentication: kms.VaultAuthentication{
-							Type: kms.VaultAuthenticationTypeAppRole,
-							AppRole: kms.VaultAppRoleAuthentication{
-								Secret: kms.VaultSecretReference{Name: "vault-approle-secret"},
+						Authentication: configv1.VaultAuthentication{
+							Type: configv1.VaultAuthenticationTypeAppRole,
+							AppRole: configv1.VaultAppRoleAuthentication{
+								Secret: configv1.VaultSecretReference{Name: "vault-approle-secret"},
 							},
 						},
 						VaultKeyPath: "transit/keys/test-transit-key",
