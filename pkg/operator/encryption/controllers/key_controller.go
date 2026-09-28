@@ -761,3 +761,25 @@ func unstructuredUnsupportedConfigFromWithPrefix(rawConfig []byte, prefix []stri
 
 	return json.Marshal(actualConfig)
 }
+
+// recordRemoteKeyConvergence stamps ConvergedID/ConvergedAt for a newly observed
+// unanimous remote key ID. Returns false when the candidate is already recorded.
+func recordRemoteKeyConvergence(rk state.RemoteKeyState, candidateRemoteKeyID string, now time.Time) (state.RemoteKeyState, bool) {
+	if rk.ConvergedID == candidateRemoteKeyID && !rk.ConvergedAt.IsZero() {
+		return rk, false
+	}
+	rk.ConvergedID = candidateRemoteKeyID
+	rk.ConvergedAt = now
+	return rk, true
+}
+
+// clearRemoteKeyConvergence removes ConvergedID/ConvergedAt when the write key is
+// already on the converged remote key. Returns false when already clear.
+func clearRemoteKeyConvergence(rk state.RemoteKeyState) (state.RemoteKeyState, bool) {
+	if rk.ConvergedID == "" && rk.ConvergedAt.IsZero() {
+		return rk, false
+	}
+	rk.ConvergedID = ""
+	rk.ConvergedAt = time.Time{}
+	return rk, true
+}
