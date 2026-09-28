@@ -199,6 +199,12 @@ func (c *keyController) checkAndCreateKeys(ctx context.Context, syncContext fact
 		return nil
 	}
 
+	if snap.CurrentMode == state.KMS {
+		if err := c.reconcileRemoteKeyRotationFromSnap(ctx, snap); err != nil {
+			return err
+		}
+	}
+
 	plan, err := planner.PlanNextKey(snap)
 	if err != nil {
 		return err
@@ -228,6 +234,24 @@ func (c *keyController) checkAndCreateKeys(ctx context.Context, syncContext fact
 	syncContext.Recorder().Eventf("EncryptionKeyCreated", "Secret %q successfully created: %q", keySecret.Name, plan.Reasons)
 
 	return nil
+}
+
+func (c *keyController) reconcileRemoteKeyRotationFromSnap(ctx context.Context, snap *KeyPlanningSnapshot) error {
+	writeKey, ok := writeKeyForRemoteKeyRotation(snap.State.DesiredBeforePlan)
+	if !ok || writeKey.RemoteKey().TargetRemoteKeyID == "" {
+		return nil
+	}
+
+	encryptionStatus, err := c.encryptionStatusProvider.GetKMSEncryptionStatus(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get KMS encryption status for remote key rotation: %w", err)
+	}
+
+	if encryptionStatus == nil {
+		return nil
+	}
+
+	return reconcileRemoteKeyRotation(ctx, c.secretClient, c.instanceName, *encryptionStatus, writeKey, clock.RealClock{})
 }
 
 func (c *keyController) validateExistingSecret(ctx context.Context, keySecret *corev1.Secret, keyID uint64) error {
