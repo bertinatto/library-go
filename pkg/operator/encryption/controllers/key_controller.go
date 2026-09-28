@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/clock"
 
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
@@ -29,6 +30,7 @@ import (
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/encryption/crypto"
 	"github.com/openshift/library-go/pkg/operator/encryption/kms"
+	"github.com/openshift/library-go/pkg/operator/encryption/kms/health"
 	"github.com/openshift/library-go/pkg/operator/encryption/secrets"
 	"github.com/openshift/library-go/pkg/operator/encryption/state"
 	"github.com/openshift/library-go/pkg/operator/encryption/statemachine"
@@ -760,6 +762,69 @@ func unstructuredUnsupportedConfigFromWithPrefix(rawConfig []byte, prefix []stri
 	}
 
 	return json.Marshal(actualConfig)
+}
+
+// reconcileRemoteKeyRotation maintains KMS remote key rotation convergence
+// annotations on the encryption key secret for the current KMS write key.
+// This slice records and clears the 5m convergence clock only; target promotion
+// and bootstrap land in follow-up PRs.
+func reconcileRemoteKeyRotation(
+	ctx context.Context,
+	secretClient corev1client.SecretsGetter,
+	instanceName string,
+	encryptionStatus operatorv1.KMSEncryptionStatus,
+	writeKey state.KeyState,
+	clk clock.Clock,
+) error {
+	secretName := fmt.Sprintf("encryption-key-%s-%s", instanceName, writeKey.Key.Name)
+	rk := writeKey.RemoteKey()
+	if len(rk.TargetRemoteKeyID) == 0 {
+		return nil
+	}
+
+	// During KMS-to-KMS migration multiple plugin key IDs can report at once; scope
+	// convergence to the current write key's keyID so backup/read-only plugins are ignored.
+	// TODO(thomas): we need to ensure the amount of reports match the number of operand pods
+	reports := health.ReportsForKeyID(encryptionStatus.HealthReports, writeKey.Key.Name)
+	convergedRemoteKeyID := health.ConvergedRemoteKeyID(reports)
+	if convergedRemoteKeyID == "" {
+		return nil
+	}
+
+	if convergedRemoteKeyID == rk.TargetRemoteKeyID {
+		return patchRemoteKeyState(ctx, secretClient, secretName, func(rk state.RemoteKeyState) (state.RemoteKeyState, bool) {
+			return clearRemoteKeyConvergence(rk)
+		})
+	}
+
+	now := clk.Now()
+	return patchRemoteKeyState(ctx, secretClient, secretName, func(rk state.RemoteKeyState) (state.RemoteKeyState, bool) {
+		return recordRemoteKeyConvergence(rk, convergedRemoteKeyID, now)
+	})
+}
+
+func writeKeyForRemoteKeyRotation(desiredState map[schema.GroupResource]state.GroupResourceState) (state.KeyState, bool) {
+	for _, grState := range desiredState {
+		if grState.WriteKey.Mode != state.KMS {
+			continue
+		}
+
+		if grState.HasWriteKey() {
+			return grState.WriteKey, true
+		}
+	}
+	return state.KeyState{}, false
+}
+
+func patchRemoteKeyState(ctx context.Context, secretClient corev1client.SecretsGetter, secretName string, mutate func(state.RemoteKeyState) (state.RemoteKeyState, bool)) error {
+	return secrets.PatchRemoteKeyState(ctx, secretClient.Secrets("openshift-config-managed"), secretName, func(rk *state.RemoteKeyState) (bool, error) {
+		next, changed := mutate(*rk)
+		if !changed {
+			return false, nil
+		}
+		*rk = next
+		return true, nil
+	})
 }
 
 // recordRemoteKeyConvergence stamps ConvergedID/ConvergedAt for a newly observed
